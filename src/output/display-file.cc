@@ -30,9 +30,6 @@
 #include "display-file.hh"
 
 #include <cerrno>
-#include <iostream>
-#include <sstream>
-#include <unordered_map>
 
 /* filenames for output; external linkage so output_backend() can infer the
  * file backend from them (see output-setting.cc) */

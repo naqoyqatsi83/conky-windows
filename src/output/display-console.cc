@@ -28,11 +28,8 @@
 #include <cstdio>
 
 #include "../conky.h"
+#include "output-setting.hh"
 #include "display-console.hh"
-
-#include <iostream>
-#include <sstream>
-#include <unordered_map>
 
 conky::simple_config_setting<bool> out_to_stderr("out_to_stderr", false, false);
 static conky::simple_config_setting<bool> extra_newline("extra_newline", false,
