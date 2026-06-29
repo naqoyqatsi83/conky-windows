@@ -174,6 +174,8 @@ set(conky_sources
   data/data-source.hh
   output/display-output.cc
   output/display-output.hh
+  output/output-setting.cc
+  output/output-setting.hh
   output/display-console.cc
   output/display-console.hh
   output/display-file.cc
@@ -369,7 +371,6 @@ endif(BUILD_GUI)
 if(BUILD_WAYLAND)
   set(wl_sources
     output/wl.cc
-    output/wl.h
     output/wl-shell.cc
     output/wl-shell.h
     output/display-wayland.cc
