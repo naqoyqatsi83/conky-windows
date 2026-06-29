@@ -2483,9 +2483,6 @@ void initialisation(int argc, char **argv) {
   }
 #endif
 
-  /* generate text and get initial size */
-  extract_variable_text(global_text);
-  free_and_zero(global_text);
   /* fork */
   if (fork_to_background.get(*state) && (first_pass != 0)) {
     int pid = fork();
@@ -2516,9 +2513,21 @@ void initialisation(int argc, char **argv) {
   tmpstring2 = new char[text_buffer_size.get(*state)];
   memset(tmpstring2, 0, text_buffer_size.get(*state));
 
+  // Outputs must be initialized before parsing the text: object construction
+  // (e.g. ${color}) queries which backends are actually enabled, which is only
+  // known once initialization has been attempted. Initialization runs after
+  // fork() because X11/Wayland connections cannot survive crossing a fork().
   if (!conky::initialize_display_outputs()) {
     SYSTEM_ERR("no usable display output found");
   }
+
+  /* generate text and get initial size */
+  extract_variable_text(global_text);
+  free_and_zero(global_text);
+
+  // NOTE: Lua globals (llua_setup_window_table, llua_setup_info) depend on
+  // `initialize_display_outputs` running first. We don't expose unpopulated X11
+  // values if X11 will never set them to something valid.
 #ifdef BUILD_GUI
   /* setup lua window globals */
   llua_setup_window_table(
