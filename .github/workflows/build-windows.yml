@@ -34,7 +34,10 @@ jobs:
       - name: CMake Configure
         shell: msys2 {0}
         run: |
-          cmake -B build -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON \
+          cmake -B build -G "MinGW Makefiles" \
+            -DBUILD_NVIDIA_NVML=ON \
+            -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++" \
+            -DCMAKE_C_FLAGS="-static-libgcc -static-libstdc++" \
             -DLUA_INCLUDE_DIR=/mingw64/include \
             -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a \
             -DBUILD_MPD=OFF -DBUILD_MOC=OFF -DBUILD_CMUS=OFF -DBUILD_APCUPSD=OFF
@@ -57,21 +60,65 @@ jobs:
         if: success()
         shell: msys2 {0}
         run: |
-          # Copy runtime DLLs from MSYS2 mingw64 bin to build/src
-          for dll in lua54.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-            if [ -f "/mingw64/bin/$dll" ]; then
-              cp -v "/mingw64/bin/$dll" build/src/
-            fi
-          done
+          # Resolve full transitive DLL dependency tree of conky.exe.
+          # With -static-libgcc -static-libstdc++, GCC runtime is embedded in conky.exe,
+          # but Lua DLL and winpthread may still be dynamic deps.
+          copy_deps() {
+            local exe="$1" dest="$2" pending="$3" done="$4"
+            while [ -s "$pending" ]; do
+              local dll
+              dll="$(head -1 "$pending")"
+              sed -i '1d' "$pending"
+              if grep -qxF "$dll" "$done"; then continue; fi
+              echo "$dll" >> "$done"
+              local found
+              found=$(find /mingw64/bin -maxdepth 1 -name "$dll" -type f 2>/dev/null | head -1)
+              if [ -z "$found" ]; then
+                # Check Windows system directory
+                found=$(find /c/Windows/System32 -maxdepth 1 -name "$dll" -type f 2>/dev/null | head -1)
+              fi
+              if [ -n "$found" ]; then
+                cp -v "$found" "$dest/"
+                # Recurse: find what THIS dll depends on
+                objdump -p "$found" 2>/dev/null | grep "DLL Name" | awk '{print $NF}' | \
+                  while IFS= read -r dep; do
+                    # Skip Windows system DLLs
+                    case "$dep" in
+                      KERNEL32.dll|USER32.dll|GDI32.dll|ADVAPI32.dll|SHELL32.dll|OLE32.dll|OLEAUT32.dll|COMCTL32.dll|COMDLG32.dll|WS2_32.dll|WINMM.dll|IMM32.dll|MSVCRT.dll|UxTheme.dll|DWMAPI.dll|SHLWAPI.dll|WININET.dll|MSWSOCK.dll|IPHLPAPI.dll|PSAPI.dll|WTSAPI32.dll|POWRPROF.dll|SETUPAPI.dll|CRYPT32.dll|BCRYPT.dll|Secur32.dll|NETAPI32.dll|NORMALIZ.dll|NTDLL.dll|WINTRUST.dll|WLDAP32.dll|RASAPI32.dll|RASDLG.dll|MPR.dll|VERSION.dll|CFGMGR32.dll|DEVRTL.dll|DNSAPI.dll|DNSRSLVR.dll|FWPUCLNT.dll)
+                        ;;
+                      libgcc_s_seh-1.dll|libstdc++-6.dll)
+                        # Statically linked — should not appear, but skip just in case
+                        ;;
+                      *)
+                        echo "$dep" >> "$pending"
+                        ;;
+                    esac
+                  done
+              fi
+            done
+          }
+          # Bootstrap: list of DLLs conky.exe directly depends on
+          mkdir -p build/src
+          objdump -p build/src/conky.exe | grep "DLL Name" | awk '{print $NF}' > /tmp/dep_pending.txt
+          : > /tmp/dep_done.txt
+          echo "=== conky.exe direct dependencies ==="
+          cat /tmp/dep_pending.txt
+          echo "=== Resolving transitive deps ==="
+          copy_deps build/src/conky.exe build/src /tmp/dep_pending.txt /tmp/dep_done.txt
           echo "=== DLLs in build/src ==="
           ls -la build/src/*.dll 2>/dev/null || echo "(no DLLs)"
+          echo "=== Files in build/src ==="
+          ls -la build/src/
 
       - name: Check build output
         if: success()
         shell: pwsh
         run: |
           Get-ChildItem "build\src\conky.exe" -ErrorAction Stop
-          Get-ChildItem "build\src\*.dll"
+          Get-ChildItem "build\src\*.dll" 2>&1 | ForEach-Object { Write-Output $_ }
+          if (-not (Get-ChildItem "build\src\*.dll" -ErrorAction SilentlyContinue)) {
+            Write-Warning "No DLLs found in build\src — conky may have all deps statically linked"
+          }
 
       - name: Download LibreHardwareMonitor
         if: success()
