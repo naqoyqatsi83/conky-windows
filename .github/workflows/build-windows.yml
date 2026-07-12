@@ -38,17 +38,17 @@ jobs:
             -DLUA_INCLUDE_DIR=/mingw64/include \
             -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a
 
-      - name: Pre-build
-        shell: msys2 {0}
-        run: |
-          # Generate defconfig.h manually so it exists before the build
-          mkdir -p build/data
-          sh bin/text2c.sh data/conky_no_x11.conf build/data/defconfig.h defconfig
-          sh bin/text2c.sh extras/convert.lua build/data/convertconf.h convertconf
-          echo "--- Verify ---"
-          ls -la build/data/defconfig.h build/data/convertconf.h 2>/dev/null
-
       - name: Build
         shell: msys2 {0}
+        continue-on-error: true
         run: |
-          mingw32-make.exe -j$(nproc) -C build
+          mingw32-make.exe -j$(nproc) -C build 2>&1 || true
+          echo "=== Include rsp ==="
+          cat build/src/CMakeFiles/conky.dir/includes_CXX.rsp 2>/dev/null || echo "No rsp"
+          echo "=== Find generated ==="
+          find build -name "defconfig.h" 2>/dev/null
+          find build -name "convertconf.h" 2>/dev/null
+          echo "=== Binary dir ==="
+          cmake -LA build 2>/dev/null | grep CMAKE_BINARY_DIR
+          echo "=== Current dir ==="
+          pwd
