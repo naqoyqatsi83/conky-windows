@@ -60,44 +60,27 @@ jobs:
         if: success()
         shell: msys2 {0}
         run: |
-          # Resolve MinGW DLL dependencies of conky.exe.
-          # Windows system DLLs (KERNEL32, USER32, etc.) are ship with Windows
-          # and must NOT be bundled — only MinGW DLLs from /mingw64/bin/ need
-          # to travel with the installer.
-          copy_mingw_deps() {
-            local exe="$1" dest="$2" pending="$3" done="$4"
-            while [ -s "$pending" ]; do
-              local dll
-              dll="$(head -1 "$pending")"
-              sed -i '1d' "$pending"
-              if grep -qxF "$dll" "$done"; then continue; fi
-              echo "$dll" >> "$done"
-              # Only resolve from MinGW bin directory — never Windows system dirs
-              local found
-              found=$(find /mingw64/bin -maxdepth 1 -name "$dll" -type f 2>/dev/null | head -1)
-              if [ -z "$found" ]; then continue; fi
-              cp -v "$found" "$dest/"
-              # Recurse: find what THIS dll depends on (non-Windows deps only)
-              objdump -p "$found" 2>/dev/null | grep "DLL Name" | awk '{print $NF}' | \
-                while IFS= read -r dep; do
-                  # Skip Windows system DLLs by checking if NOT in mingw64/bin
-                  if [ ! -f "/mingw64/bin/$dep" ]; then continue; fi
-                  echo "$dep" >> "$pending"
-                done
+          # Copy all MinGW DLLs that conky.exe depends on.
+          # Pass 1: copy direct dependencies from /mingw64/bin/
+          echo "=== Direct MinGW dependencies of conky.exe ==="
+          for dll in $(objdump -p build/src/conky.exe | grep "DLL Name" | awk '{print $NF}'); do
+            if [ -f "/mingw64/bin/$dll" ]; then
+              echo "  $dll"
+              cp "/mingw64/bin/$dll" build/src/
+            fi
+          done
+          # Pass 2: check each copied DLL for additional MinGW deps
+          echo "=== Transitive MinGW dependencies ==="
+          for f in build/src/*.dll; do
+            [ -f "$f" ] || continue
+            for dll in $(objdump -p "$f" 2>/dev/null | grep "DLL Name" | awk '{print $NF}'); do
+              if [ -f "/mingw64/bin/$dll" ] && [ ! -f "build/src/$dll" ]; then
+                echo "  $dll (via $(basename $f))"
+                cp "/mingw64/bin/$dll" build/src/
+              fi
             done
-          }
-          # Bootstrap: direct DLLs from conky.exe that live in /mingw64/bin/
-          mkdir -p build/src
-          objdump -p build/src/conky.exe | grep "DLL Name" | awk '{print $NF}' | \
-            while IFS= read -r d; do
-              [ -f "/mingw64/bin/$d" ] && echo "$d"
-            done > /tmp/dep_pending.txt
-          : > /tmp/dep_done.txt
-          echo "=== conky.exe direct MinGW dependencies ==="
-          cat /tmp/dep_pending.txt
-          echo "=== Resolving transitive MinGW deps ==="
-          copy_mingw_deps build/src/conky.exe build/src /tmp/dep_pending.txt /tmp/dep_done.txt
-          echo "=== DLLs bundled in build/src ==="
+          done
+          echo "=== DLLs in build/src ==="
           ls -la build/src/*.dll 2>/dev/null || echo "(no DLLs)"
           echo "=== Files in build/src ==="
           ls -la build/src/
