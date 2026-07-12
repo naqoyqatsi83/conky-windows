@@ -36,15 +36,8 @@ jobs:
         run: |
           cmake -B build -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON \
             -DLUA_INCLUDE_DIR=/mingw64/include \
-            -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a
-
-      - name: Diagnose
-        shell: msys2 {0}
-        run: |
-          echo "=== defconfig.h ==="
-          find build -name "defconfig.h" 2>/dev/null
-          echo "=== Include rsp ==="
-          cat build/src/CMakeFiles/conky.dir/includes_CXX.rsp 2>/dev/null || echo "No rsp"
+            -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a \
+            -DCMAKE_CXX_FLAGS="-I$(pwd)/build/data"
 
       - name: Build
         shell: msys2 {0}
