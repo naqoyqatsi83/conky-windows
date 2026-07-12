@@ -37,7 +37,7 @@ jobs:
           cmake -B build -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON \
             -DLUA_INCLUDE_DIR=/mingw64/include \
             -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a \
-            -DBUILD_MPD=OFF -DBUILD_MOC=OFF -DBUILD_CMUS=OFF
+            -DBUILD_MPD=OFF -DBUILD_MOC=OFF -DBUILD_CMUS=OFF -DBUILD_APCUPSD=OFF
 
       - name: Pre-generate config headers (workaround MSYS2 rsp path issue)
         shell: msys2 {0}
