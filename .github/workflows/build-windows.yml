@@ -28,6 +28,10 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-make
             mingw-w64-x86_64-lua
+            mingw-w64-x86_64-git
+            mingw-w64-x86_64-gawk
+            mingw-w64-x86_64-coreutils
+            mingw-w64-x86_64-gperf
 
       - name: CMake Configure
         shell: msys2 {0}
