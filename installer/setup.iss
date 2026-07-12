@@ -46,7 +46,7 @@ Name: "{commonappdata}\Conky"
 
 [Files]
 Source: "{#SOURCE_DIR}\conky.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\conky_examples\Windows-btop.conkyrc"; DestDir: "{userdocs}\Conky"; Flags: ignoreversion; DestName: "btop.conkyrc"; AfterInstall: CreateConfig
 Source: "{#SOURCE_DIR}\..\..\installer\LibreHardwareMonitor\*"; DestDir: "{app}\LibreHardwareMonitor"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs; Tasks: install_lhm
 Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion

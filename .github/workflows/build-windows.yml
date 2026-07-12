@@ -55,12 +55,16 @@ jobs:
 
       - name: Bundle runtime DLLs
         if: success()
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          Copy-Item "C:\msys64\mingw64\bin\lua54.dll" -Destination "build\src\" -ErrorAction SilentlyContinue
-          if (Test-Path "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll" -Destination "build\src\" }
-          if (Test-Path "C:\msys64\mingw64\bin\libstdc++-6.dll") { Copy-Item "C:\msys64\mingw64\bin\libstdc++-6.dll" -Destination "build\src\" }
-          if (Test-Path "C:\msys64\mingw64\bin\libwinpthread-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libwinpthread-1.dll" -Destination "build\src\" }
+          # Copy runtime DLLs from MSYS2 mingw64 bin to build/src
+          for dll in lua54.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            if [ -f "/mingw64/bin/$dll" ]; then
+              cp -v "/mingw64/bin/$dll" build/src/
+            fi
+          done
+          echo "=== DLLs in build/src ==="
+          ls -la build/src/*.dll 2>/dev/null || echo "(no DLLs)"
 
       - name: Check build output
         if: success()
