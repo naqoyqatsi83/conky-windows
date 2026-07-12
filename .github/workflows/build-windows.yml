@@ -73,7 +73,7 @@ jobs:
         if: success()
         shell: pwsh
         run: |
-          $url = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net481.zip"
+          $url = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip"
           $zip = "$env:TEMP\LHM.zip"
           $extract = "installer\LibreHardwareMonitor"
           New-Item -ItemType Directory -Force -Path $extract

@@ -8,7 +8,7 @@ set "TEMP_ZIP=%TEMP%\LibreHardwareMonitor.zip"
 
 echo === Downloading LibreHardwareMonitor ===
 powershell -Command "& {
-    $url = 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net481.zip'
+    $url = 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip'
     Write-Output 'Downloading from: ' + $url
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -Uri $url -OutFile '%TEMP_ZIP%'
@@ -18,7 +18,7 @@ powershell -Command "& {
 if %ERRORLEVEL% neq 0 (
     echo Download failed. Trying alternative URL...
     powershell -Command "& {
-        $url = 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net481.zip'
+        $url = 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip'
         Write-Output 'Downloading from: ' + $url
         Invoke-WebRequest -Uri $url -OutFile '%TEMP_ZIP%'
     }"
