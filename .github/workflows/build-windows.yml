@@ -38,6 +38,15 @@ jobs:
             -DLUA_INCLUDE_DIR=/mingw64/include \
             -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a
 
+      - name: Pre-generate config headers (workaround MSYS2 rsp path issue)
+        shell: msys2 {0}
+        run: |
+          # Generate defconfig.h and convertconf.h into build/ (which is always in
+          # the compiler include path) to work around MSYS2 CMake path formatting
+          # differences in response files.
+          sh bin/text2c.sh data/conky_no_x11.conf build/defconfig.h defconfig
+          sh bin/text2c.sh extras/convert.lua build/convertconf.h convertconf
+
       - name: Build
         shell: msys2 {0}
         run: |
