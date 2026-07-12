@@ -31,13 +31,6 @@ jobs:
             mingw-w64-x86_64-git
             mingw-w64-x86_64-gperf
 
-      - name: Find Lua paths
-        shell: msys2 {0}
-        run: |
-          echo "Lua include: $(find /mingw64/include -name 'lua.h' 2>/dev/null | head -5)"
-          echo "Lua lib: $(find /mingw64/lib -name '*lua*' 2>/dev/null | head -10)"
-          echo "Lua bin: $(find /mingw64/bin -name '*lua*' 2>/dev/null | head -10)"
-
       - name: CMake Configure
         shell: msys2 {0}
         run: |
@@ -45,79 +38,15 @@ jobs:
             -DLUA_INCLUDE_DIR=/mingw64/include \
             -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a
 
-      - name: Diagnose build tree
+      - name: Diagnose
         shell: msys2 {0}
         run: |
-          find build -name "defconfig.h" -o -name "config.h" 2>/dev/null
-          cmake -LA build 2>/dev/null | grep -E "BINARY_DIR|SOURCE_DIR|INCLUDE" | head -20
+          echo "=== defconfig.h ==="
+          find build -name "defconfig.h" 2>/dev/null
+          echo "=== Include rsp ==="
+          cat build/src/CMakeFiles/conky.dir/includes_CXX.rsp 2>/dev/null || echo "No rsp"
 
       - name: Build
         shell: msys2 {0}
         run: |
-          mingw32-make.exe -j$(nproc) -C build VERBOSE=1
-
-      - name: Bundle runtime DLLs
-        shell: pwsh
-        run: |
-          # Copy Lua DLL from MSYS2
-          Copy-Item "C:\msys64\mingw64\bin\lua54.dll" -Destination "build\src\" -ErrorAction SilentlyContinue
-          # Copy MinGW runtime DLLs
-          if (Test-Path "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll" -Destination "build\src\" }
-          if (Test-Path "C:\msys64\mingw64\bin\libstdc++-6.dll") { Copy-Item "C:\msys64\mingw64\bin\libstdc++-6.dll" -Destination "build\src\" }
-          if (Test-Path "C:\msys64\mingw64\bin\libwinpthread-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libwinpthread-1.dll" -Destination "build\src\" }
-
-      - name: Check build output
-        shell: pwsh
-        run: |
-          Get-ChildItem "build\src\conky.exe" -ErrorAction Stop
-          Get-ChildItem "build\src\*.dll"
-
-      - name: Download LibreHardwareMonitor
-        shell: pwsh
-        run: |
-          $url = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net481.zip"
-          $zip = "$env:TEMP\LHM.zip"
-          $extract = "installer\LibreHardwareMonitor"
-          New-Item -ItemType Directory -Force -Path $extract
-          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          Invoke-WebRequest -Uri $url -OutFile $zip
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, (Resolve-Path $extract))
-
-      - name: Compile lhm-temp.exe
-        shell: pwsh
-        run: |
-          $csc = Get-ChildItem "C:\Windows\Microsoft.NET\Framework64" -Recurse -Filter "csc.exe" |
-            Select-Object -First 1 -ExpandProperty FullName
-          & $csc -nologo -target:winexe `
-            -reference:installer\LibreHardwareMonitor\LibreHardwareMonitorLib.dll `
-            -out:installer\LibreHardwareMonitor\lhm-temp.exe `
-            installer\lhm-temp\lhm-temp.cs
-
-      - name: Setup Inno Setup
-        shell: pwsh
-        run: |
-          choco install innosetup --no-progress --confirm
-
-      - name: Build Installer
-        shell: pwsh
-        run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-            $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
-          }
-          Write-Output "Using ISCC: $iscc"
-          & $iscc installer\setup.iss
-
-      - name: Upload Installer Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Conky-Installer
-          path: installer\Conky-*-Setup.exe
-
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: installer\Conky-*-Setup.exe
-          generate_release_notes: true
+          mingw32-make.exe -j$(nproc) -C build
