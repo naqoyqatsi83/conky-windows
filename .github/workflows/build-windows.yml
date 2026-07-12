@@ -40,15 +40,76 @@ jobs:
 
       - name: Build
         shell: msys2 {0}
-        continue-on-error: true
         run: |
-          mingw32-make.exe -j$(nproc) -C build 2>&1 || true
-          echo "=== Include rsp ==="
-          cat build/src/CMakeFiles/conky.dir/includes_CXX.rsp 2>/dev/null || echo "No rsp"
-          echo "=== Find generated ==="
-          find build -name "defconfig.h" 2>/dev/null
-          find build -name "convertconf.h" 2>/dev/null
-          echo "=== Binary dir ==="
-          cmake -LA build 2>/dev/null | grep CMAKE_BINARY_DIR
-          echo "=== Current dir ==="
-          pwd
+          mingw32-make.exe -j$(nproc) -C build 2>&1
+
+      - name: Bundle runtime DLLs
+        if: success()
+        shell: pwsh
+        run: |
+          Copy-Item "C:\msys64\mingw64\bin\lua54.dll" -Destination "build\src\" -ErrorAction SilentlyContinue
+          if (Test-Path "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll" -Destination "build\src\" }
+          if (Test-Path "C:\msys64\mingw64\bin\libstdc++-6.dll") { Copy-Item "C:\msys64\mingw64\bin\libstdc++-6.dll" -Destination "build\src\" }
+          if (Test-Path "C:\msys64\mingw64\bin\libwinpthread-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libwinpthread-1.dll" -Destination "build\src\" }
+
+      - name: Check build output
+        if: success()
+        shell: pwsh
+        run: |
+          Get-ChildItem "build\src\conky.exe" -ErrorAction Stop
+          Get-ChildItem "build\src\*.dll"
+
+      - name: Download LibreHardwareMonitor
+        if: success()
+        shell: pwsh
+        run: |
+          $url = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net481.zip"
+          $zip = "$env:TEMP\LHM.zip"
+          $extract = "installer\LibreHardwareMonitor"
+          New-Item -ItemType Directory -Force -Path $extract
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, (Resolve-Path $extract))
+
+      - name: Compile lhm-temp.exe
+        if: success()
+        shell: pwsh
+        run: |
+          $csc = Get-ChildItem "C:\Windows\Microsoft.NET\Framework64" -Recurse -Filter "csc.exe" |
+            Select-Object -First 1 -ExpandProperty FullName
+          & $csc -nologo -target:winexe `
+            -reference:installer\LibreHardwareMonitor\LibreHardwareMonitorLib.dll `
+            -out:installer\LibreHardwareMonitor\lhm-temp.exe `
+            installer\lhm-temp\lhm-temp.cs
+
+      - name: Setup Inno Setup
+        if: success()
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress --confirm
+
+      - name: Build Installer
+        if: success()
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+          }
+          Write-Output "Using ISCC: $iscc"
+          & $iscc installer\setup.iss
+
+      - name: Upload Installer Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conky-Installer
+          path: installer\Conky-*-Setup.exe
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer\Conky-*-Setup.exe
+          generate_release_notes: true
