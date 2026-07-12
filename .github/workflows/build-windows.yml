@@ -32,24 +32,30 @@ jobs:
       - name: CMake Configure
         shell: msys2 {0}
         run: |
-          cmake -B build -G "MSYS Makefiles" -DBUILD_NVIDIA_NVML=ON \
+          cmake -B build -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON \
             -DLUA_INCLUDE_DIR=/mingw64/include/lua5.4 \
             -DLUA_LIBRARY=/mingw64/lib/liblua5.4.dll.a
 
       - name: Build
         shell: msys2 {0}
         run: |
-          cmake --build build -j$(nproc)
+          mingw32-make.exe -j$(nproc) -C build
 
       - name: Bundle runtime DLLs
         shell: pwsh
         run: |
-          # Copy Lua DLL from MSYS2 (named liblua5.4.dll on MSYS2)
-          Copy-Item "C:\msys64\mingw64\bin\liblua*.dll" -Destination "build\src\" -ErrorAction Continue
-          # Copy MinGW runtime DLLs (TDM-GCC statically links these, MSYS2 may not)
-          Copy-Item "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll" -Destination "build\src\" -ErrorAction Continue
-          Copy-Item "C:\msys64\mingw64\bin\libstdc++-6.dll" -Destination "build\src\" -ErrorAction Continue
-          Copy-Item "C:\msys64\mingw64\bin\libwinpthread-1.dll" -Destination "build\src\" -ErrorAction Continue
+          # Copy Lua DLL from MSYS2
+          Copy-Item "C:\msys64\mingw64\bin\lua54.dll" -Destination "build\src\" -ErrorAction SilentlyContinue
+          # Copy MinGW runtime DLLs
+          if (Test-Path "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll" -Destination "build\src\" }
+          if (Test-Path "C:\msys64\mingw64\bin\libstdc++-6.dll") { Copy-Item "C:\msys64\mingw64\bin\libstdc++-6.dll" -Destination "build\src\" }
+          if (Test-Path "C:\msys64\mingw64\bin\libwinpthread-1.dll") { Copy-Item "C:\msys64\mingw64\bin\libwinpthread-1.dll" -Destination "build\src\" }
+
+      - name: Check build output
+        shell: pwsh
+        run: |
+          Get-ChildItem "build\src\conky.exe" -ErrorAction Stop
+          Get-ChildItem "build\src\*.dll"
 
       - name: Download LibreHardwareMonitor
         shell: pwsh
