@@ -86,12 +86,17 @@ jobs:
         if: success()
         shell: pwsh
         run: |
-          $csc = Get-ChildItem "C:\Windows\Microsoft.NET\Framework64" -Recurse -Filter "csc.exe" |
-            Select-Object -First 1 -ExpandProperty FullName
+          $csc = "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          $ref = (Resolve-Path "installer\LibreHardwareMonitor\LibreHardwareMonitorLib.dll").Path
+          Write-Output "Compiler: $csc"
+          Write-Output "Reference: $ref"
+          # Verify the DLL has the Computer type
+          Add-Type -Path $ref
+          Write-Output "Computer type found: $([type]::GetType('LibreHardwareMonitor.Hardware.Computer, LibreHardwareMonitorLib', $false))"
           & $csc -nologo -target:winexe `
-            -reference:installer\LibreHardwareMonitor\LibreHardwareMonitorLib.dll `
-            -out:installer\LibreHardwareMonitor\lhm-temp.exe `
-            installer\lhm-temp\lhm-temp.cs
+            -reference:"$ref" `
+            -out:"installer\LibreHardwareMonitor\lhm-temp.exe" `
+            "installer\lhm-temp\lhm-temp.cs"
 
       - name: Setup Inno Setup
         if: success()
