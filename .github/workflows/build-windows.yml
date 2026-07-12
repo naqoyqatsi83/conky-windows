@@ -31,12 +31,19 @@ jobs:
             mingw-w64-x86_64-git
             mingw-w64-x86_64-gperf
 
+      - name: Find Lua paths
+        shell: msys2 {0}
+        run: |
+          echo "Lua include: $(find /mingw64/include -name 'lua.h' 2>/dev/null | head -5)"
+          echo "Lua lib: $(find /mingw64/lib -name '*lua*' 2>/dev/null | head -10)"
+          echo "Lua bin: $(find /mingw64/bin -name '*lua*' 2>/dev/null | head -10)"
+
       - name: CMake Configure
         shell: msys2 {0}
         run: |
           cmake -B build -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON \
-            -DLUA_INCLUDE_DIR=/mingw64/include/lua5.4 \
-            -DLUA_LIBRARY=/mingw64/lib/liblua5.4.dll.a
+            -DLUA_INCLUDE_DIR=/mingw64/include \
+            -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a
 
       - name: Build
         shell: msys2 {0}
