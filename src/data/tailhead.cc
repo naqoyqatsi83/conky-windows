@@ -96,7 +96,7 @@ void init_tailhead(const char *type, const char *arg, struct text_object *obj) {
         type, "invalid arg for {}, next_check must be larger than 0", type);
   }
   if (ht->wantedlines > 0 && ht->wantedlines <= MAX_HEADTAIL_LINES) {
-    ht->logfile = to_real_path(tmp.get());
+    ht->logfile = to_real_path(tmp.get()).string();
     ht->buffer = nullptr;
     ht->current_use = 0;
   } else {

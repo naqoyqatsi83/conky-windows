@@ -1,0 +1,102 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-lua
+
+      - name: CMake Configure
+        shell: msys2 {0}
+        run: |
+          cmake -B build -G "MSYS Makefiles" -DBUILD_NVIDIA_NVML=ON \
+            -DLUA_INCLUDE_DIR=/mingw64/include/lua5.4 \
+            -DLUA_LIBRARY=/mingw64/lib/liblua5.4.dll.a
+
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          cmake --build build -j$(nproc)
+
+      - name: Bundle runtime DLLs
+        shell: pwsh
+        run: |
+          # Copy Lua DLL from MSYS2 (named liblua5.4.dll on MSYS2)
+          Copy-Item "C:\msys64\mingw64\bin\liblua*.dll" -Destination "build\src\" -ErrorAction Continue
+          # Copy MinGW runtime DLLs (TDM-GCC statically links these, MSYS2 may not)
+          Copy-Item "C:\msys64\mingw64\bin\libgcc_s_seh-1.dll" -Destination "build\src\" -ErrorAction Continue
+          Copy-Item "C:\msys64\mingw64\bin\libstdc++-6.dll" -Destination "build\src\" -ErrorAction Continue
+          Copy-Item "C:\msys64\mingw64\bin\libwinpthread-1.dll" -Destination "build\src\" -ErrorAction Continue
+
+      - name: Download LibreHardwareMonitor
+        shell: pwsh
+        run: |
+          $url = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net481.zip"
+          $zip = "$env:TEMP\LHM.zip"
+          $extract = "installer\LibreHardwareMonitor"
+          New-Item -ItemType Directory -Force -Path $extract
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, (Resolve-Path $extract))
+
+      - name: Compile lhm-temp.exe
+        shell: pwsh
+        run: |
+          $csc = Get-ChildItem "C:\Windows\Microsoft.NET\Framework64" -Recurse -Filter "csc.exe" |
+            Select-Object -First 1 -ExpandProperty FullName
+          & $csc -nologo -target:winexe `
+            -reference:installer\LibreHardwareMonitor\LibreHardwareMonitorLib.dll `
+            -out:installer\LibreHardwareMonitor\lhm-temp.exe `
+            installer\lhm-temp\lhm-temp.cs
+
+      - name: Setup Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress --confirm
+
+      - name: Build Installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+          }
+          Write-Output "Using ISCC: $iscc"
+          & $iscc installer\setup.iss
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conky-Installer
+          path: installer\Conky-*-Setup.exe
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer\Conky-*-Setup.exe
+          generate_release_notes: true

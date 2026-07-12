@@ -64,6 +64,7 @@ struct diskio_stat *prepare_diskio_stat(const char *s) {
 
   if (s == nullptr) { return &stats; }
 
+#ifndef _WIN32
   if (strncmp(s, "label:", 6) == 0) {
     snprintf(&(device_name[0]), text_buffer_size.get(*state),
              "/dev/disk/by-label/%s", s + 6);
@@ -76,10 +77,13 @@ struct diskio_stat *prepare_diskio_stat(const char *s) {
   } else {
     rpbuf = realpath(s, nullptr);
   }
+#else
+  rpbuf = _fullpath(NULL, s, 0);
+#endif
 
   if (rpbuf != nullptr) {
     strncpy(&device_s[0], rpbuf, text_buffer_size.get(*state));
-    free(rpbuf);
+    if (free) free(rpbuf);
   } else {
     strncpy(&device_s[0], s, text_buffer_size.get(*state));
   }
@@ -119,7 +123,11 @@ struct diskio_stat *prepare_diskio_stat(const char *s) {
   /* no existing found, make a new one */
   cur->next = new diskio_stat;
   cur = cur->next;
+#ifdef _WIN32
+  cur->dev = strdup(&(device_s[0]));
+#else
   cur->dev = strndup(&(device_s[0]), text_buffer_size.get(*state));
+#endif
   cur->last = UINT_MAX;
   cur->last_read = UINT_MAX;
   cur->last_write = UINT_MAX;

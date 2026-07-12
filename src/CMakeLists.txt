@@ -23,6 +23,17 @@ include_directories(${conky_includes})
 # always include the binary dir
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+# Windows compat layer
+if(OS_WINDOWS)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/compat)
+  set(conky_sources ${conky_sources} compat/compat_windows.cc)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include${CMAKE_CURRENT_SOURCE_DIR}/compat/compat_windows.h")
+  # Require Windows Vista+ API level for GetIfEntry2, GetAdaptersAddresses etc.
+  # This must be a compile definition (not in source) because the forced -include
+  # above pulls in _mingw.h which sets the default before any #define in source.
+  add_definitions(-D_WIN32_WINNT=0x0601)
+endif()
+
 if(BUILD_BUILTIN_CONFIG OR BUILD_OLD_CONFIG)
   # include config output dir
   include_directories(${CMAKE_BINARY_DIR}/data)
@@ -250,6 +261,17 @@ if(OS_HAIKU)
   set(haiku_sources data/os/haiku.cc data/os/haiku.h)
   set(optional_sources ${optional_sources} ${haiku_sources})
 endif(OS_HAIKU)
+
+if(OS_WINDOWS)
+  set(windows_sources
+    data/os/windows.cc
+    data/os/windows.h
+    output/display-windows.cc
+    output/display-windows.hh
+  )
+  set(optional_sources ${optional_sources} ${windows_sources})
+  list(APPEND conky_libs ws2_32 iphlpapi pdh ole32 wbemuuid)
+endif(OS_WINDOWS)
 
 if(OS_DARWIN)
   set(darwin_sources
@@ -532,7 +554,7 @@ if(BUILD_TESTING)
     LIBRARY DESTINATION ${LIB_INSTALL_DIR}
     ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
 else()
-  add_executable(conky main.cc ${conky_sources} ${optional_sources})
+  add_executable(conky main.cc ${conky_sources} ${optional_sources} conky.rc)
   add_dependencies(conky generated_hdr_files)
   target_include_directories(conky PRIVATE ${conky_target_includes})
   target_link_libraries(conky ${conky_libs})
@@ -542,6 +564,11 @@ install(TARGETS conky
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION ${LIB_INSTALL_DIR}
   ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
+
+# Windows GUI subsystem — no console window
+if(WIN32)
+  set_target_properties(conky PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 
 if(BUILD_PORT_MONITORS)
   install(TARGETS tcp-portmon

@@ -28,6 +28,12 @@
  */
 #include "gui.h"
 #include "../common.h"
+
+#ifdef BUILD_WINDOWS
+namespace conky {
+extern simple_config_setting<bool> out_to_windows;
+}
+#endif
 #include "../conky.h"
 #include "../logging.h"
 #include "config.h"
@@ -62,6 +68,9 @@ bool out_to_gui(lua::state &l) {
 #ifdef BUILD_WAYLAND
   to_gui |= out_to_wayland.get(l);
 #endif /* BUILD_WAYLAND */
+#ifdef BUILD_WINDOWS
+  to_gui |= conky::out_to_windows.get(l);
+#endif /* BUILD_WINDOWS */
   return to_gui;
 }
 

@@ -52,6 +52,8 @@
 
 #if defined(__FreeBSD__)
 #define TICKZ 100L
+#elif defined(_WIN32)
+#define TICKZ 100L
 #else
 #define TICKZ sysconf(_SC_CLK_TCK)
 #endif /* __FreeBSD__ */

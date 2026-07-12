@@ -29,6 +29,19 @@ src/colour-names.hh
 !3rdparty/nvml/**/lib/*.so
 !3rdparty/nvml/**/lib/*.a
 
+# Windows port: LibreHardwareMonitor DLLs (downloaded, not built)
+/installer/LibreHardwareMonitor/
+
+# Windows port: installer output
+/installer/*.exe
+/installer/*.exe.sig
+
+# Windows port: pre-built conky.exe outside repo
+installer/conky.exe
+
+# Windows port: compiled lhm-temp.exe (built from lhm-temp.cs)
+installer/lhm-temp/lhm-temp.exe
+
 # Compiler cache
 .cache
 

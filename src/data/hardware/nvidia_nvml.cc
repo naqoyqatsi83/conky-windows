@@ -29,8 +29,6 @@
 
 #include "nvidia_nvml.h"
 
-#include <dlfcn.h>
-
 #include <array>
 #include <charconv>
 #include <cstdint>
@@ -45,6 +43,14 @@
 
 #include "../../conky.h"
 #include "../../logging.h"
+
+#ifdef _WIN32
+/* winsock2.h must precede windows.h (MinGW requirement) */
+#include <winsock2.h>
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 void init_nvml();
 
@@ -75,15 +81,21 @@ static nvml_init init{};
 
 // The bundled NVML stub ships its own nvmlErrorString that returns a multi-line
 // loader banner for codes it doesn't recognize. Resolve the real implementation
-// from the installed driver's libnvidia-ml.so.1 at runtime instead (it's
-// already loaded for the data queries), falling back to the raw error code if
-// it can't be found.
+// from the installed driver's library at runtime instead (it's already loaded
+// for the data queries), falling back to the raw error code if it can't be found.
 static std::string nvml_error_string(nvmlReturn_t ret) {
   using error_string_fn = const char* (*)(nvmlReturn_t);
   static error_string_fn real_error_string = []() -> error_string_fn {
+#ifdef _WIN32
+    HMODULE handle = LoadLibraryA("nvml.dll");
+    if (handle == nullptr) { return nullptr; }
+    return reinterpret_cast<error_string_fn>(
+        GetProcAddress(handle, "nvmlErrorString"));
+#else
     void* handle = dlopen("libnvidia-ml.so.1", RTLD_LAZY);
     if (handle == nullptr) { return nullptr; }
     return reinterpret_cast<error_string_fn>(dlsym(handle, "nvmlErrorString"));
+#endif
   }();
 
   if (real_error_string != nullptr) {

@@ -24,8 +24,14 @@
 
 #include "c++wrap.hh"
 
-#include <unistd.h>
 #include <cstdio>
+
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#else
+#include <unistd.h>
+#endif
 
 /* force use of  POSIX strerror_r instead of non-portable GNU specific */
 #ifdef _GNU_SOURCE
@@ -38,6 +44,7 @@
 #endif
 
 #if !defined(HAVE_PIPE2) || !defined(HAVE_O_CLOEXEC)
+#ifndef _WIN32
 #include <fcntl.h>
 
 namespace {
@@ -62,14 +69,29 @@ int pipe2_emulate(int pipefd[2], int flags) {
 int (*const pipe2_ptr)(int[2], int) = &pipe2_emulate;
 }  // namespace
 #else
+namespace {
+int pipe2_emulate(int pipefd[2], int) {
+  // Windows: emulate with _pipe, no O_CLOEXEC support
+  return _pipe(pipefd, 1024, _O_BINARY);
+}
+int (*const pipe2_ptr)(int[2], int) = &pipe2_emulate;
+}  // namespace
+#endif
+#else
 int (*const pipe2_ptr)(int[2], int) = &pipe2;
 #endif
 
 std::string strerror_r(int errnum) {
   static thread_local char buf[100];
+#ifdef _WIN32
+  if (strerror_s(buf, sizeof buf, errnum) != 0) {
+    snprintf(buf, sizeof buf, "Unknown error %i", errnum);
+  }
+#else
   if (strerror_r(errnum, buf, sizeof buf) != 0) {
     snprintf(buf, sizeof buf, "Unknown error %i", errnum);
   }
+#endif
   return buf;
 }
 

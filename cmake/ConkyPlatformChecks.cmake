@@ -25,31 +25,35 @@ include(CheckSymbolExists)
 include(CheckLibraryExists)
 include(FetchContent)
 
-# Check for some headers
-check_include_files(sys/statfs.h HAVE_SYS_STATFS_H)
-check_include_files(sys/param.h HAVE_SYS_PARAM_H)
-check_include_files(sys/inotify.h HAVE_SYS_INOTIFY_H)
-check_include_files(dirent.h HAVE_DIRENT_H)
+if(NOT WIN32)
+  # Check for some headers
+  check_include_files(sys/statfs.h HAVE_SYS_STATFS_H)
+  check_include_files(sys/param.h HAVE_SYS_PARAM_H)
+  check_include_files(sys/inotify.h HAVE_SYS_INOTIFY_H)
+  check_include_files(dirent.h HAVE_DIRENT_H)
 
-# Check for some functions
-check_function_exists(strndup HAVE_STRNDUP)
+  # Check for some functions
+  check_function_exists(strndup HAVE_STRNDUP)
 
-check_symbol_exists(pipe2 "unistd.h" HAVE_PIPE2)
-check_symbol_exists(O_CLOEXEC "fcntl.h" HAVE_O_CLOEXEC)
+  check_symbol_exists(pipe2 "unistd.h" HAVE_PIPE2)
+  check_symbol_exists(O_CLOEXEC "fcntl.h" HAVE_O_CLOEXEC)
+endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   check_symbol_exists(statfs64 "sys/mount.h" HAVE_STATFS64)
-else(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+elseif(NOT WIN32)
   check_symbol_exists(statfs64 "sys/statfs.h" HAVE_STATFS64)
-endif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+endif()
 
-check_symbol_exists(clock_gettime "time.h" HAVE_CLOCK_GETTIME)
-if(NOT HAVE_CLOCK_GETTIME)
-  check_library_exists(rt clock_gettime "" HAVE_CLOCK_GETTIME_RT)
-  if(HAVE_CLOCK_GETTIME_RT)
-    set(CLOCK_GETTIME_LIB rt)
-  elseif(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
-    message(FATAL_ERROR "clock_gettime not found.")
+if(NOT WIN32)
+  check_symbol_exists(clock_gettime "time.h" HAVE_CLOCK_GETTIME)
+  if(NOT HAVE_CLOCK_GETTIME)
+    check_library_exists(rt clock_gettime "" HAVE_CLOCK_GETTIME_RT)
+    if(HAVE_CLOCK_GETTIME_RT)
+      set(CLOCK_GETTIME_LIB rt)
+    elseif(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin")
+      message(FATAL_ERROR "clock_gettime not found.")
+    endif()
   endif()
 endif()
 
@@ -168,6 +172,17 @@ else(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   set(OS_DARWIN false)
 endif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+  set(OS_WINDOWS true)
+else()
+  set(OS_WINDOWS false)
+endif()
+
+if(OS_WINDOWS)
+  set(HAVE_DIRENT_H 1)
+  set(HAVE_STRNDUP 1)
+endif()
+
 if(OS_DARWIN)
   set(CONKY_C_IMPLICIT_INCLUDE_DIRECTORIES_RAW
     ${CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES})
@@ -193,7 +208,8 @@ if(NOT OS_LINUX
   AND NOT OS_DRAGONFLY
   AND NOT OS_SOLARIS
   AND NOT OS_HAIKU
-  AND NOT OS_DARWIN)
+  AND NOT OS_DARWIN
+  AND NOT OS_WINDOWS)
   message(
     FATAL_ERROR
     "Your platform, '${CMAKE_SYSTEM_NAME}', is not currently supported.  Patches are welcome."
@@ -220,7 +236,10 @@ endif(NOT
   OS_HAIKU
   AND
   NOT
-  OS_DARWIN)
+  OS_DARWIN
+  AND
+  NOT
+  OS_WINDOWS)
 
 if(OS_LINUX)
   check_include_files("linux/sockios.h" HAVE_LINUX_SOCKIOS_H)

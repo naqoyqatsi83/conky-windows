@@ -37,6 +37,10 @@
 #include <cstdio>
 #include <mutex>
 #include <string>
+#ifdef _WIN32
+#include <io.h>
+#include <windows.h>
+#endif
 #include "../conky.h"
 #include "../content/specials.h"
 #include "../content/text_object.h"
@@ -86,6 +90,7 @@ static char *remove_excess_quotes(const char *command) {
 // to kill it when it hangs while reading or writing to it. We have to kill it
 // because pclose will wait until the process dies by itself
 static FILE *pid_popen(const char *command, const char *mode, pid_t *child) {
+#ifndef _WIN32
   int ends[2];
   int parentend, childend;
 
@@ -144,6 +149,74 @@ static FILE *pid_popen(const char *command, const char *mode, pid_t *child) {
   }
 
   return fdopen(parentend, mode);
+#else
+  // Windows: use CreateProcess with anonymous pipes (no console flash).
+  // This replaces the POSIX fork/exec/pipe pattern with the native Windows
+  // equivalent, running the command through cmd.exe /c with CREATE_NO_WINDOW.
+  SECURITY_ATTRIBUTES sa = {};
+  sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+  sa.bInheritHandle = TRUE;
+
+  HANDLE read_pipe = nullptr, write_pipe = nullptr;
+  if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0)) {
+    return nullptr;
+  }
+
+  // The read end must NOT be inherited by the child — only we read from it.
+  SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0);
+
+  // Pass the command to cmd.exe with /s /c for predictable quote handling.
+  // /s /c strips exactly the outer pair of quotes, so the inner command
+  // string (which may contain its own quotes, pipes, & etc.) is preserved
+  // faithfully.
+  std::string cmdline = std::string("cmd.exe /s /c \"") + command + "\"";
+
+  // Create a nul handle for the child's stdin (daemonised conky may have no
+  // valid stdin handle, which would cause CreateProcess to fail).
+  HANDLE hNull = CreateFileA("NUL", GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE,
+                              &sa, OPEN_EXISTING, 0, nullptr);
+
+  STARTUPINFOA si = {};
+  si.cb = sizeof(STARTUPINFOA);
+  si.dwFlags = STARTF_USESTDHANDLES;
+  si.hStdInput = hNull != INVALID_HANDLE_VALUE ? hNull : nullptr;
+  si.hStdOutput = write_pipe;
+  si.hStdError = write_pipe;  // merge stderr into stdout
+
+  PROCESS_INFORMATION pi = {};
+
+  BOOL ok = CreateProcessA(nullptr, &cmdline[0], nullptr, nullptr, TRUE,
+                           CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+
+  if (hNull != INVALID_HANDLE_VALUE) { CloseHandle(hNull); }
+  CloseHandle(write_pipe);
+
+  if (!ok) {
+    CloseHandle(read_pipe);
+    return nullptr;
+  }
+
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+
+  // Convert the Windows HANDLE to a CRT file descriptor and then to a FILE*.
+  int fd = _open_osfhandle(reinterpret_cast<intptr_t>(read_pipe),
+                           _O_RDONLY | _O_TEXT);
+  if (fd == -1) {
+    CloseHandle(read_pipe);
+    return nullptr;
+  }
+
+  FILE *fp = _fdopen(fd, "r");
+  if (fp == nullptr) {
+    _close(fd);
+    return nullptr;
+  }
+
+  *child = 0;
+  return fp;
+#endif
 }
 
 /**

@@ -545,6 +545,7 @@ void free_if_up(struct text_object *obj) { free_and_zero(obj->data.opaque); }
 
 /* We should check if this is ok with OpenBSD and NetBSD as well. */
 int interface_up(struct text_object *obj) {
+#ifndef _WIN32
   int fd;
   struct ifreq ifr{};
   auto *dev = static_cast<char *>(obj->data.opaque);
@@ -593,6 +594,10 @@ END_FALSE:
 END_TRUE:
   close(fd);
   return 1;
+#else /* _WIN32 */
+  (void)obj;
+  return 0;
+#endif /* _WIN32 */
 }
 
 class _dns_data {

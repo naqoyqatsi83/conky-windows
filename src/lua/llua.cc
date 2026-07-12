@@ -223,15 +223,15 @@ void llua_init() {
     // add XDG directory to lua path
     auto xdg_path =
         std::filesystem::path(to_real_path(XDG_CONFIG_FILE)).parent_path();
-    if (stat(xdg_path.c_str(), &file_stat) == 0) {
-      path_ext.append(xdg_path);
+    if (stat(xdg_path.string().c_str(), &file_stat) == 0) {
+      path_ext.append(xdg_path.string());
       path_ext.append("/?.lua");
       path_ext.push_back(';');
     }
 
     auto parent_path = current_config.parent_path();
-    if (xdg_path != parent_path && stat(parent_path.c_str(), &file_stat) == 0) {
-      path_ext.append(parent_path);
+    if (xdg_path != parent_path && stat(parent_path.string().c_str(), &file_stat) == 0) {
+      path_ext.append(parent_path.string());
       path_ext.append("/?.lua");
       path_ext.push_back(';');
     }
@@ -256,7 +256,7 @@ void llua_init() {
   lua_pushstring(lua_L, BUILD_ARCH);
   lua_setglobal(lua_L, "conky_build_arch");
 
-  lua_pushstring(lua_L, current_config.c_str());
+  lua_pushstring(lua_L, current_config.string().c_str());
   lua_setglobal(lua_L, "conky_config");
 
   lua_pushcfunction(lua_L, &llua_conky_parse);
@@ -290,21 +290,21 @@ void llua_load(const char *script) {
   std::filesystem::path script_path(script);
 
   path = to_real_path(script);  // handles ~/some/path.lua
-  if (!file_exists(path.c_str())) {
+  if (!file_exists(path.string().c_str())) {
     if (!script_path.is_absolute()) {
       auto cfg_path = std::filesystem::path(to_real_path(XDG_CONFIG_FILE));
       auto cfg_dir = cfg_path.parent_path();
 
       // prepend the config directory to the script path
       auto full = cfg_dir / script_path;
-      path = to_real_path(full.c_str());
+      path = to_real_path(full.string());
     } else {
       // Already an absolute path
       path = to_real_path(script);
     }
   }
 
-  if (!file_exists(path.c_str())) {
+  if (!file_exists(path.string().c_str())) {
     bool found_alternative = false;
 
     // Try resolving file name by using files in lua path:
@@ -329,7 +329,7 @@ void llua_load(const char *script) {
       current.replace(substitute_pos, 1, script);
       path = to_real_path(current);
 
-      if (file_exists(path.c_str())) {
+      if (file_exists(path.string().c_str())) {
         found_alternative = true;
         break;
       }
@@ -343,13 +343,13 @@ void llua_load(const char *script) {
     }
   }
 
-  error = luaL_dofile(lua_L, path.c_str());
+  error = luaL_dofile(lua_L, path.string().c_str());
   if (error != 0) {
     LOG_ERROR("lua load error in '{}': {}", path, lua_tostring(lua_L, -1));
     lua_pop(lua_L, 1);
 #ifdef HAVE_SYS_INOTIFY_H
   } else if (!llua_block_notify && inotify_fd != -1) {
-    llua_append_notify(path.c_str());
+    llua_append_notify(path.string().c_str());
 #endif /* HAVE_SYS_INOTIFY_H */
   }
 }

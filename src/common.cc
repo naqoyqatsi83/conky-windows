@@ -295,7 +295,7 @@ std::string tilde_expand(const std::string &unexpanded) {
           "directory");
       return unexpanded;
     }
-    return home.value();
+    return home.value().string();
   }
   char next = unexpanded.at(1);
   if (next == '/') {

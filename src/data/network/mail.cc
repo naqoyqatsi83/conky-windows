@@ -483,6 +483,7 @@ std::unique_ptr<mail_param_ex> parse_mail_args(mail_type type,
     return mail;
   }
 
+#ifndef _WIN32
   // see if password needs prompting
   if (pass[0] == '*' && pass[1] == '\0') {
     int fp = fileno(stdin);
@@ -497,6 +498,7 @@ std::unique_ptr<mail_param_ex> parse_mail_args(mail_type type,
     term.c_lflag |= ECHO;
     tcsetattr(fp, TCSANOW, &term);
   }
+#endif /* _WIN32 */
 
   mail = std::make_unique<mail_param_ex>();
   get<MP_HOST>(*mail) = host;

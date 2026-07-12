@@ -35,9 +35,37 @@
 
 #include "config.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+/* Undefine Windows macros that conflict with C++ identifiers */
+#ifdef ABSOLUTE
+#undef ABSOLUTE
+#endif
+#ifdef RELATIVE
+#undef RELATIVE
+#endif
+#ifdef DELETE
+#undef DELETE
+#endif
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef CONST
+#undef CONST
+#endif
+#else
 #include <arpa/inet.h>
-#include <config.h>      /* defines */
-#include <sys/utsname.h> /* struct uname_s */
+#endif
+#include <sys/utsname.h> /* struct utsname (compat on Windows) */
 #include <csignal>
 #include <filesystem>
 #include <memory>

@@ -50,8 +50,13 @@
 
 #include <fcntl.h>
 #include <getopt.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#ifndef _WIN32
 #include <netdb.h>
 #include <netinet/in.h>
+#endif
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -260,7 +265,9 @@ extern kvm_t *kd;
 #endif
 
 /* prototypes for internally used functions */
+#ifndef _WIN32
 static void signal_handler(int /*sig*/);
+#endif
 static void reload_config();
 
 static const char *suffixes[] = {_nop("B"),   _nop("KiB"), _nop("MiB"),
@@ -873,12 +880,45 @@ void update_text_area() {
     last_font_height = font_height();
     for_each_line(text_buffer, text_size_updater);
 
+    /* Add one font height as safety margin so the last line's text
+     * (including descenders) is fully within the DIB. The line-by-line y_add
+     * accumulation can undercount the final text position. */
+    text_size += conky::vec2i(0, font_height());
+
     text_size = text_size.max(
         conky::vec2i(text_size.x() + 1, dpi_scale(minimum_height.get(*state))));
     int mw = dpi_scale(maximum_width.get(*state));
     if (mw > 0) text_size = text_size.min(conky::vec2i(mw, text_size.y()));
 
     LOG_TRACE("computed text size: {}", text_size);
+
+    /* Count lines in text_buffer for diagnostics */
+    {
+      int line_count = 1;
+      int total_chars = 0;
+      for (char *c = text_buffer; *c; c++) {
+        if (*c == '\n') line_count++;
+        total_chars++;
+      }
+      LOG_INFO("update_text_area: {} lines ({} chars) in text_buffer, text_size={}x{}, font_height={}",
+               line_count, total_chars, text_size.x(), text_size.y(), last_font_height);
+
+      /* Dump first 1200 chars with \n visible for debugging */
+      std::string escaped;
+      for (int i = 0; i < 1200 && text_buffer[i]; i++) {
+        char c = text_buffer[i];
+        if (c == '\n') {
+          escaped += "\\n\n";
+        } else if (c == '\01') {
+          escaped += "•";
+        } else if (c >= 32) {
+          escaped += c;
+        } else {
+          escaped += '?';
+        }
+      }
+      LOG_INFO("text_buffer head:\n{}", escaped);
+    }
   }
 
   alignment align = text_alignment.get(*state);
@@ -961,6 +1001,8 @@ static int text_size_updater(char *s, int special_index) {
    * `cur_y_add` accumulator in draw_each_line_inner. Tracked separately from
    * last_font_height so that voffsets on the same line are not discarded. */
   int cur_y_add = 0;
+  int voffset = 0;
+  int ascent_adj = 0;
   char *p;
   special_node *current = specials;
 
@@ -971,23 +1013,29 @@ static int text_size_updater(char *s, int special_index) {
   }
   /* get string widths and skip specials */
   p = s;
+  /* Capture font ascent at line start — mirrors draw_each_line_inner's
+   * cur_y += font_ascent() at entry, which uses whatever font is active
+   * from the previous line. */
+  int ascent = font_ascent();
   while (*p != 0) {
     if (*p == SPECIAL_CHAR) {
       *p = '\0';
       w += get_string_width(s);
       *p = SPECIAL_CHAR;
 
-      if (current->type == text_node_t::BAR ||
-          current->type == text_node_t::GAUGE ||
-          current->type == text_node_t::GRAPH) {
+      if (current->type == text_node_t::BAR) {
         w += current->width;
-        if (current->height > cur_y_add && current->height > font_height()) {
+        if (current->height > cur_y_add) {
           cur_y_add = current->height;
         }
+      } else if (current->type == text_node_t::GAUGE ||
+          current->type == text_node_t::GRAPH) {
+        w += current->width + 3;  /* +3px gap matches draw_each_line_inner */
+        if (current->height > cur_y_add) { cur_y_add = current->height - 1 - font_ascent() - font_descent(); }
       } else if (current->type == text_node_t::OFFSET) {
         if (current->arg > 0) { w += current->arg; }
       } else if (current->type == text_node_t::VOFFSET) {
-        last_font_height += current->arg;
+        voffset += current->arg;
       } else if (current->type == text_node_t::GOTO) {
         if (current->arg > cur_x) { w = static_cast<int>(current->arg); }
       } else if (current->type == text_node_t::TAB) {
@@ -998,8 +1046,10 @@ static int text_size_updater(char *s, int special_index) {
         w += step - (cur_x - text_start.x() - start) % step;
       } else if (current->type == text_node_t::FONT) {
         selected_font = current->font_added;
-        if (font_height() > last_font_height) {
-          last_font_height = font_height();
+        int old_ascent = font_ascent();
+        set_font();
+        if (font_ascent() > old_ascent) {
+          ascent_adj += font_ascent() - old_ascent;
         }
       }
 
@@ -1016,13 +1066,29 @@ static int text_size_updater(char *s, int special_index) {
   int mw = dpi_scale(maximum_width.get(*state));
   if (mw > 0) { text_size.set_x(std::min(mw, text_size.x())); }
 
-  text_size += conky::vec2i(0, last_font_height + cur_y_add);
+  /* Use the same y-advance formula as draw_each_line_inner:
+   *   font_ascent() + cur_y_add + font_descent() + voffset + ascent_adj
+   * This correctly accounts for font-ascent/descent asymmetry on font-change
+   * lines (e.g. ascent from the previous font + descent from the new one),
+   * which last_font_height could miss when fonts have equal total height
+   * but different ascent/descent ratios.
+   * ascent_adj mirrors draw_each_line_inner's FONT-handler adjustment:
+   *   cur_y -= old_ascent; cur_y += max(old, new)
+   * which adds max(0, new_ascent - old_ascent) to cur_y when switching
+   * to a font with a taller ascent. */
+  int y_add = ascent + cur_y_add + font_descent() + voffset + ascent_adj;
+  text_size += conky::vec2i(0, y_add);
+  LOG_INFO("text_size_updater: y_add={} (ascent={} cur_y_add={} descent={} voffset={} ascent_adj={}) text_size={}x{} after special={} font_h={}",
+           y_add, ascent, cur_y_add, font_descent(), voffset, ascent_adj, text_size.x(), text_size.y(), special_index, font_height());
   last_font_height = font_height();
   return special_index;
 }
 #endif /* BUILD_GUI */
 
 static inline void set_foreground_color(Colour c) {
+#ifdef BUILD_GUI
+  current_color = c;
+#endif
   for (auto output : display_outputs()) output->set_foreground_color(c);
 }
 
@@ -1048,10 +1114,12 @@ static inline void draw_graph_bars(special_node *current,
     }
   }
   /* Handle the case where y axis is to be inverted */
-  int offsety1 = current->inverty ? by : by + h;
+  /* GDI Rectangle(right,bottom) is exclusive, so the frame's bottom pixel is
+   * at (by + h - 1). Bars must stay within that boundary. */
+  int offsety1 = current->inverty ? by : by + h - 1;
   int offsety2 = current->inverty
                      ? by + current->graph_data[j] * (h - 1) / current->scale
-                     : round_to_positive_int(static_cast<double>(by) + h -
+                     : round_to_positive_int(static_cast<double>(by) + h - 1 -
                                              current->graph_data[j] * (h - 1) /
                                                  current->scale);
   /* this is mugfugly, but it works */
@@ -1186,6 +1254,17 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
   cur_x = text_start.x();
 #endif /* BUILD_GUI */
 
+  /* DEBUG: log this line being processed with y position */
+  {
+    std::string line_for_log;
+    for (char *cp = s; *cp && *cp != '\n'; cp++) {
+      if (*cp == SPECIAL_CHAR) line_for_log += '•';
+      else if (*cp >= 32) line_for_log += *cp;
+      else line_for_log += '?';
+    }
+    LOG_INFO("draw_each_line_inner: sp={} cur_y={} cur_x={} line=[{}]", special_index, cur_y, cur_x, line_for_log);
+  }
+
   while (*p != 0) {
     if (*p == SPECIAL_CHAR || last_special_applied > -1) {
 #ifdef BUILD_GUI
@@ -1210,7 +1289,6 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
         case text_node_t::HORIZONTAL_LINE:
           if (display_output() && display_output()->graphical()) {
             int h = current->height;
-            int mid = font_ascent() / 2;
             int max_width = text_start.x() + text_size.x() - cur_x;
 
             /* if no width was specified, current->width is set to 0 */
@@ -1220,9 +1298,9 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
             if (display_output()) {
               display_output()->set_line_style(h, true);
               display_output()->draw_line(text_offset.x() + cur_x,
-                                          text_offset.y() + cur_y - mid / 2,
+                                          text_offset.y() + cur_y + font_height(),
                                           text_offset.x() + cur_x + w,
-                                          text_offset.y() + cur_y - mid / 2);
+                                          text_offset.y() + cur_y + font_height());
             }
           }
           break;
@@ -1231,8 +1309,7 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
           if (display_output() && display_output()->graphical()) {
             int h = current->height;
             char tmp_s = current->arg;
-            int mid = font_ascent() / 2;
-            int max_width = text_start.x() + text_size.x() - cur_x - 1;
+            int max_width = text_start.x() + text_size.x() - cur_x;
             char ss[2] = {tmp_s, tmp_s};
 
             /* if no width was specified, current->width is set to 0 */
@@ -1243,9 +1320,9 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
               display_output()->set_line_style(h, false);
               display_output()->set_dashes(ss);
               display_output()->draw_line(text_offset.x() + cur_x,
-                                          text_offset.y() + cur_y - mid / 2,
+                                          text_offset.y() + cur_y + font_height(),
                                           text_offset.x() + cur_x + w,
-                                          text_offset.x() + cur_y - mid / 2);
+                                          text_offset.y() + cur_y + font_height());
             }
           }
           break;
@@ -1258,11 +1335,13 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
             h = current->height;
             bar_usage = current->arg;
             scale = current->scale;
-            by = cur_y - (font_ascent() / 2) - 1;
-
-            if (h < font_h) { by -= h / 2 - 1; }
+            // Position bar below the current text zone so it doesn't overlap
+            // with text drawn on this line. bar top starts right below the
+            // text (at the line's font_height baseline); cur_y_add pushes
+            // the next line.
+            by = cur_y + font_height();
             w = current->width;
-            if (w == 0) { w = text_start.x() + text_size.x() - cur_x - 1; }
+            if (w == 0) { w = text_start.x() + text_size.x() - cur_x; }
             if (w < 0) { w = 0; }
 
             if (display_output()) {
@@ -1274,13 +1353,13 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
                                           text_offset.y() + by,
                                           w * bar_usage / scale, h);
             }
-            if (h > cur_y_add && h > font_h) { cur_y_add = h; }
+            if (h > cur_y_add) { cur_y_add = h; }
           }
           break;
 
         case text_node_t::GAUGE: /* new GAUGE  */
           if (display_output() && display_output()->graphical()) {
-            int h, by = 0;
+            int h, by;
             Colour last_colour = current_color;
 #ifdef BUILD_MATH
             float angle, px, py;
@@ -1290,11 +1369,9 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
             if (cur_x - text_start.x() > mw && mw > 0) { break; }
 
             h = current->height;
-            by = cur_y - (font_ascent() / 2) - 1;
-
-            if (h < font_h) { by -= h / 2 - 1; }
+            by = cur_y + font_height();
             w = current->width;
-            if (w == 0) { w = text_start.x() + text_size.x() - cur_x - 1; }
+            if (w == 0) { w = text_start.x() + text_size.x() - cur_x; }
             if (w < 0) { w = 0; }
 
             if (display_output()) {
@@ -1323,7 +1400,7 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
 
 #endif /* BUILD_MATH */
 
-            if (h > cur_y_add && h > font_h) { cur_y_add = h; }
+            if (h > cur_y_add) { cur_y_add = h; }
 
             set_foreground_color(last_colour);
           }
@@ -1334,14 +1411,11 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
             int h, by, i = 0, j = 0;
             int colour_idx = 0;
             Colour last_colour = current_color;
-            if (cur_x - text_start.x() > mw && mw > 0) { break; }
             h = current->height;
-            by = cur_y - (font_ascent() / 2) - 1;
-
-            if (h < font_h) { by -= h / 2 - 1; }
+            by = cur_y + font_height();
             w = current->width;
             if (w == 0) {
-              w = text_start.x() + text_size.x() - cur_x - 1;
+              w = text_start.x() + text_size.x() - cur_x;
               current->graph_width = std::max(w - 1, 0);
               if (current->graph_width !=
                   static_cast<int>(current->graph_data.size())) {
@@ -1381,7 +1455,7 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
                 }
               }
             }
-            if (h > cur_y_add && h > font_h) { cur_y_add = h; }
+            if (h > cur_y_add) { cur_y_add = h - 1 - font_ascent() - font_descent(); }
             if (show_graph_range.get(*state)) {
               int tmp_x = cur_x;
               int tmp_y = cur_y;
@@ -1456,6 +1530,7 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
 #endif
             set_foreground_color(last_colour);
           }
+          cur_x += 3;  /* small gap between adjacent graphs */
           break;
 
         case text_node_t::FONT:
@@ -1559,6 +1634,14 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
             if (draw_mode == draw_mode_t::BG) { cur_x++; }
 #endif /* BUILD_GUI */
             cur_x = static_cast<int>(current->arg);
+#if defined(_WIN32) && !defined(OWN_WINDOW)
+            // On Windows without OWN_WINDOW, the window spans the full
+            // screen.  text_start is screen-absolute, so GOTO offsets must be
+            // relative to the start of the text block rather than the screen
+            // edge.  Without this, ${goto 10} would put content at x=10 (left
+            // edge of screen) instead of 10px into the right-aligned text.
+            cur_x += text_start.x();
+#endif
             for (auto output : display_outputs()) output->gotox(cur_x);
           }
           break;
@@ -2092,7 +2175,7 @@ void main_loop() {
 static void reload_config() {
   auto _scope = LOG_SCOPE("reload_config");
   struct stat sb{};
-  if ((stat(current_config.c_str(), &sb) != 0) ||
+  if ((stat(current_config.string().c_str(), &sb) != 0) ||
       (!S_ISREG(sb.st_mode) && !S_ISLNK(sb.st_mode))) {
     LOG_WARNING(
         "config file '{}' is gone, continuing with config from memory (send "
@@ -2219,7 +2302,7 @@ void load_config_file() {
       l.loadstring(defconfig);
     } else {
 #endif
-      l.loadfile(current_config.c_str());
+      l.loadfile(current_config.string().c_str());
 #ifdef BUILD_BUILTIN_CONFIG
     }
 #endif
@@ -2230,7 +2313,7 @@ void load_config_file() {
     LOG_INFO("assuming old config syntax and attempting conversion");
     // the strchr thingy skips the first line (#! /usr/bin/lua)
     l.loadstring(strchr(convertconf, '\n'));
-    l.pushstring(current_config.c_str());
+    l.pushstring(current_config.string().c_str());
     l.call(1, 1);
 #else
     throw conky::error(
@@ -2268,20 +2351,53 @@ void set_current_config() {
 
   if (current_config.empty()) {
     /* Try to use personal config file first */
-    std::string buf = to_real_path(XDG_CONFIG_FILE);
+    std::string buf = to_real_path(XDG_CONFIG_FILE).string();
     if (stat(buf.c_str(), &s) == 0) { current_config = buf; }
   }
 
   if (current_config.empty()) {
     /* Try to use personal config file first */
-    std::string buf = to_real_path(CONFIG_FILE);
+    std::string buf = to_real_path(CONFIG_FILE).string();
     if (stat(buf.c_str(), &s) == 0) { current_config = buf; }
   }
 
+#ifdef BUILD_WINDOWS
+  /* On Windows the compile-time paths in CONFIG_FILE / XDG_CONFIG_FILE are
+   * frozen to the builder's home directory, so they only work on that one
+   * machine.  Resolve the canonical Windows paths at runtime instead. */
+  if (current_config.empty()) {
+    wchar_t env[MAX_PATH];
+    if (GetEnvironmentVariableW(L"USERPROFILE", env, MAX_PATH) > 0 &&
+        env[0] != L'\0') {
+      std::wstring wp = std::wstring(env) + L"\\.conkyrc";
+      std::string p(wp.begin(), wp.end());
+      if (stat(p.c_str(), &s) == 0) { current_config = p; }
+    }
+  }
+  if (current_config.empty()) {
+    wchar_t env[MAX_PATH];
+    if (GetEnvironmentVariableW(L"APPDATA", env, MAX_PATH) > 0 &&
+        env[0] != L'\0') {
+      std::wstring wp = std::wstring(env) + L"\\conky\\conky.conf";
+      std::string p(wp.begin(), wp.end());
+      if (stat(p.c_str(), &s) == 0) { current_config = p; }
+    }
+  }
+  if (current_config.empty()) {
+    wchar_t env[MAX_PATH];
+    if (GetEnvironmentVariableW(L"ALLUSERSPROFILE", env, MAX_PATH) > 0 &&
+        env[0] != L'\0') {
+      std::wstring wp = std::wstring(env) + L"\\conky\\conky.conf";
+      std::string p(wp.begin(), wp.end());
+      if (stat(p.c_str(), &s) == 0) { current_config = p; }
+    }
+  }
+#else
   /* Try to use system config file if personal config does not exist */
   if (current_config.empty() && (stat(SYSTEM_CONFIG_FILE, &s) == 0)) {
     current_config = SYSTEM_CONFIG_FILE;
   }
+#endif
 
   /* No readable config found */
   if (current_config.empty()) {
@@ -2363,7 +2479,9 @@ void setup_inotify() {
 }
 void initialisation(int argc, char **argv) {
   auto _scope = LOG_SCOPE("init");
+#ifndef _WIN32
   struct sigaction act{}, oact{};
+#endif
 
   clear_net_stats();
   set_default_configurations();
@@ -2486,6 +2604,7 @@ void initialisation(int argc, char **argv) {
   /* generate text and get initial size */
   extract_variable_text(global_text);
   free_and_zero(global_text);
+#ifndef _WIN32
   /* fork */
   if (fork_to_background.get(*state) && (first_pass != 0)) {
     int pid = fork();
@@ -2508,6 +2627,7 @@ void initialisation(int argc, char **argv) {
         exit(EXIT_SUCCESS);
     }
   }
+#endif /* _WIN32 */
 
   text_buffer = new char[max_user_text.get(*state)];
   memset(text_buffer, 0, max_user_text.get(*state));
@@ -2528,6 +2648,7 @@ void initialisation(int argc, char **argv) {
 
   llua_setup_info(&info, active_update_interval());
 
+#ifndef _WIN32
   /* Set signal handlers */
   act.sa_handler = signal_handler;
   sigemptyset(&act.sa_mask);
@@ -2544,10 +2665,12 @@ void initialisation(int argc, char **argv) {
       sigaction(SIGTERM, &act, &oact) < 0) {
     LOG_ERROR("error setting signal handler: {}", strerror(errno));
   }
+#endif /* _WIN32 */
 
   llua_startup_hook();
 }
 
+#ifndef _WIN32
 static void signal_handler(int sig) {
   /* signal handler is light as a feather, as it should be.
    * we will poll g_signal_pending with each loop of conky
@@ -2575,3 +2698,4 @@ static void signal_handler(int sig) {
       break;
   }
 }
+#endif /* _WIN32 */

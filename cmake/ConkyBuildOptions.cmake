@@ -131,9 +131,20 @@ if(OS_DARWIN)
   set(DEFAULTNETDEV "en0" CACHE STRING "Default networkdevice" FORCE)
 endif(OS_DARWIN)
 
-set(XDG_CONFIG_FILE "$HOME/.config/conky/conky.conf"
-  CACHE STRING "Configfile of the user (XDG)")
-set(CONFIG_FILE "$HOME/.conkyrc" CACHE STRING "Configfile of the user")
+# Windows only override
+if(OS_WINDOWS)
+  set(DEFAULTNETDEV "Ethernet" CACHE STRING "Default networkdevice" FORCE)
+  file(TO_CMAKE_PATH "$ENV{APPDATA}" _appdata)
+  file(TO_CMAKE_PATH "$ENV{USERPROFILE}" _userprofile)
+  set(XDG_CONFIG_FILE "${_appdata}/conky/conky.conf" CACHE STRING "Configfile of the user (XDG)")
+  set(CONFIG_FILE "${_userprofile}/.conkyrc" CACHE STRING "Configfile of the user")
+endif(OS_WINDOWS)
+
+if(NOT OS_WINDOWS)
+  set(XDG_CONFIG_FILE "$HOME/.config/conky/conky.conf"
+    CACHE STRING "Configfile of the user (XDG)")
+  set(CONFIG_FILE "$HOME/.conkyrc" CACHE STRING "Configfile of the user")
+endif()
 set(MAX_USER_TEXT_DEFAULT "16384"
   CACHE STRING
   "Default maximum size of config TEXT buffer, i.e. below TEXT line.")
@@ -152,7 +163,7 @@ cmake_dependent_option(BUILD_IPV6 "Enable if you want IPv6 support" true
   "OS_LINUX" false)
 
 cmake_dependent_option(BUILD_NVIDIA_NVML "Enable Nvidia variables with NVML" false
-  "OS_LINUX" false)
+  "OS_LINUX OR WIN32" false)
 
 if(OS_LINUX)
   # nvidia may also work on FreeBSD, not sure
@@ -175,6 +186,9 @@ option(ENABLE_RUNTIME_TWEAKS "Enable runtime environment checks for better syste
 
 # Optional features etc
 option(BUILD_WLAN "Enable wireless support" false)
+if(OS_WINDOWS)
+  set(BUILD_WLAN false CACHE BOOL "Enable wireless support" FORCE)
+endif()
 
 option(BUILD_BUILTIN_CONFIG "Enable builtin default configuration" true)
 
@@ -186,6 +200,9 @@ option(BUILD_OLD_CONFIG "Enable support for the old syntax of configurations"
 option(BUILD_MATH "Enable math support" true)
 
 option(BUILD_NCURSES "Enable ncurses support" true)
+if(OS_WINDOWS)
+  set(BUILD_NCURSES false CACHE BOOL "Enable ncurses support" FORCE)
+endif()
 
 dependent_option(LEAKFREE_NCURSES
   "Enable to hide false ncurses-memleaks in valgrind (works only when ncurses is compiled with --disable-leaks)"
@@ -195,7 +212,11 @@ dependent_option(LEAKFREE_NCURSES
 
 option(BUILD_WAYLAND "Build Wayland support" false)
 
-option(BUILD_X11 "Build X11 support" true)
+if(OS_WINDOWS)
+  option(BUILD_X11 "Build X11 support" false)
+else()
+  option(BUILD_X11 "Build X11 support" true)
+endif()
 
 dependent_option(OWN_WINDOW "Enable running conky in a dedicated window" true
   "BUILD_X11" false
@@ -242,6 +263,11 @@ if(BUILD_WAYLAND)
   set(BUILD_GUI true)
 endif(BUILD_WAYLAND)
 
+if(OS_WINDOWS)
+  set(BUILD_GUI true)
+  set(BUILD_WINDOWS true)
+endif(OS_WINDOWS)
+
 dependent_option(BUILD_MOUSE_EVENTS "Enable mouse event support" true
   "BUILD_WAYLAND OR BUILD_X11" false
   "Mouse event support requires Wayland or X11 enabled")
@@ -264,6 +290,9 @@ dependent_option(BUILD_LUA_TEXT "Build Fontconfig Freetype and Harfbuzz for Lua"
   "Text Lua bindings depend on BUILD_GUI")
 
 option(BUILD_OPENSOUNDSYS "Build with Open Sound System support" true)
+if(OS_WINDOWS)
+  set(BUILD_OPENSOUNDSYS false CACHE BOOL "Build with Open Sound System support" FORCE)
+endif()
 
 option(BUILD_AUDACIOUS "Build audacious (music player) support" false)
 

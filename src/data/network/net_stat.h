@@ -30,8 +30,13 @@
 #ifndef _NET_STAT_H
 #define _NET_STAT_H
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <netinet/in.h> /* struct in6_addr */
 #include <sys/socket.h> /* struct sockaddr */
+#endif
 #include "config.h"
 
 #ifdef BUILD_IPV6

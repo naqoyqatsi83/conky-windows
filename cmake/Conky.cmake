@@ -51,6 +51,10 @@ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   set(OS_DARWIN true)
 endif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
 
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+  set(OS_WINDOWS true)
+endif(CMAKE_SYSTEM_NAME MATCHES "Windows")
+
 if(NOT OS_LINUX
   AND NOT OS_FREEBSD
   AND NOT OS_OPENBSD
@@ -58,7 +62,8 @@ if(NOT OS_LINUX
   AND NOT OS_DRAGONFLY
   AND NOT OS_SOLARIS
   AND NOT OS_HAIKU
-  AND NOT OS_DARWIN)
+  AND NOT OS_DARWIN
+  AND NOT OS_WINDOWS)
   message(
     FATAL_ERROR
     "Your platform, '${CMAKE_SYSTEM_NAME}', is not currently supported.  Patches are welcome."
@@ -85,7 +90,10 @@ endif(NOT
   OS_HAIKU
   AND
   NOT
-  OS_DARWIN)
+  OS_DARWIN
+  AND
+  NOT
+  OS_WINDOWS)
 
 include(FindThreads)
 find_package(Threads)
@@ -98,7 +106,7 @@ set(conky_includes ${CMAKE_BINARY_DIR})
 # enabled! Thus disable this and _LARGEFILE64_SOURCE isnt needed, it is already
 # used on macOS.
 #
-if(NOT OS_DARWIN AND NOT OS_OPENBSD)
+if(NOT OS_DARWIN AND NOT OS_OPENBSD AND NOT OS_WINDOWS)
   add_definitions(-D_LARGEFILE64_SOURCE -D_POSIX_C_SOURCE=200809L) # Standard definitions
   set(
     CMAKE_REQUIRED_DEFINITIONS

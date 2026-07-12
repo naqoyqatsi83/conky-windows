@@ -1,0 +1,69 @@
+conky.config = {
+  alignment = 'top_right',
+  own_window = true,
+  gap_x = 20, gap_y = 60,
+  font = 'Consolas:size=10',
+  default_color = 'white',
+  update_interval = 1.0,
+  minimum_width = 340, minimum_height = 0,
+  maximum_width = 350,
+  draw_shades = false,
+}
+
+conky.text = [[
+${font Segoe UI:bold:size=12}${alignc}System Monitor
+${hr 2}
+
+${font Segoe UI:bold:size=10}${exec powershell -Command "$env:COMPUTERNAME"}
+${font Consolas:size=10}
+Uptime:             ${alignr}$uptime
+
+${font Segoe UI:bold:size=10}CPU [${exec powershell -Command "((Get-CimInstance Win32_Processor).Name).Trim()"}]
+${font Consolas:size=10}
+Usage:              ${alignr}${cpu}%
+Freq:               ${alignr}${exec powershell -Command "& { [math]::Round(((Get-CimInstance Win32_Processor).MaxClockSpeed[0] * (Get-CimInstance Win32_PerfFormattedData_Counters_ProcessorInformation)[0].PercentProcessorPerformance) / 100 / 1000, 2) }"} GHz
+Temp:               ${alignr}${acpitemp}C
+${cpugraph 50,340 FFA500 FF4500}
+
+
+${font Segoe UI:bold:size=10}GPU [${nvidia modelname 0}]
+${font Consolas:size=10}
+GPU Temp:           ${alignr}${nvidia gputemp 0}C
+GPU Freq:           ${alignr}${nvidia gpufreq 0} MHz
+GPU Util:           ${alignr}${nvidia gpuutil 0}%
+Fan Speed:          ${alignr}${nvidia fanlevel 0}%
+VRAM Used:          ${alignr}${nvidia mem 0}
+VRAM Total:         ${alignr}${nvidia memtotal 0}
+VRAM Freq:          ${alignr}${nvidia memfreq 0} MHz
+${nvidiagraph gpuutil 50,340 00FF00 00AA00 0}
+
+
+${font Segoe UI:bold:size=10}Memory
+${font Consolas:size=10}
+RAM:                ${alignr}$mem / $memmax ($memperc%)
+${membar 8}
+
+Swap:               ${alignr}$swap / $swapmax ($swapperc%)
+${swapbar 8}
+
+${font Segoe UI:bold:size=10}Storage
+${font Consolas:size=10}
+C: ${alignr}${fs_used C:} / ${fs_size C:} (${fs_free_perc C:}% free)
+${fs_bar 8 C:}
+
+D: ${alignr}${fs_used D:} / ${fs_size D:} (${fs_free_perc D:}% free)
+${fs_bar 8 D:}
+
+${font Segoe UI:bold:size=10}Network [Ethernet]
+${font Consolas:size=10}
+Down:               ${alignr}${downspeed Ethernet}
+Up:                 ${alignr}${upspeed Ethernet}
+${downspeedgraph Ethernet 38,340 66ddff 0088ee}
+${upspeedgraph Ethernet 38,340 dd66ff 8800dd -y}
+
+
+Total Down:         ${alignr}${totaldown Ethernet}
+Total Up:           ${alignr}${totalup Ethernet}
+IP Ethernet:        ${alignr}${addr Ethernet}
+IP Tailscale:       ${alignr}${addr Tailscale}
+]];

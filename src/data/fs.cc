@@ -33,6 +33,9 @@
 #include <unistd.h>
 #include <cctype>
 #include <cerrno>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "../conky.h"
 #include "../content/specials.h"
 #include "../content/text_object.h"
@@ -135,6 +138,7 @@ struct fs_stat *prepare_fs_stat(const char *s) {
 #endif /* defined(__APPLE__) */
 
 static void update_fs_stat(struct fs_stat *fs) {
+#ifndef _WIN32
 #if defined(__sun)
   struct statvfs s;
 
@@ -164,9 +168,47 @@ static void update_fs_stat(struct fs_stat *fs) {
     fs->free = 0;
     strncpy(fs->type, "unknown", DEFAULT_TEXT_BUFFER_SIZE);
   }
+#else /* _WIN32 */
+  ULARGE_INTEGER free_bytes, total_bytes, total_free;
+  if (GetDiskFreeSpaceExA(fs->path, &free_bytes, &total_bytes,
+                          &total_free)) {
+    fs->size = static_cast<long long>(total_bytes.QuadPart);
+    fs->avail = static_cast<long long>(free_bytes.QuadPart);
+    fs->free = static_cast<long long>(total_free.QuadPart);
+    fs->errored = 0;
+  } else {
+    if (fs->errored == 0) {
+      LOG_ERROR("GetDiskFreeSpaceEx '{}' failed", fs->path);
+      fs->errored = 1;
+    }
+    fs->size = 0;
+    fs->avail = 0;
+    fs->free = 0;
+  }
+
+  /* Get filesystem type via GetVolumeInformation */
+  {
+    char volume_root[4];
+    char fs_type[32] = "NTFS";
+    strncpy(volume_root, fs->path, 3);
+    volume_root[3] = '\0';
+    /* Ensure it ends with a backslash for the root path */
+    if (volume_root[1] == ':') {
+      char root_path[4] = "A:\\";
+      root_path[0] = volume_root[0];
+      char vol_fs[32] = {0};
+      if (GetVolumeInformationA(root_path, nullptr, 0, nullptr, nullptr,
+                                nullptr, vol_fs, sizeof(vol_fs))) {
+        strncpy(fs_type, vol_fs, sizeof(fs_type) - 1);
+      }
+    }
+    strncpy(fs->type, fs_type, DEFAULT_TEXT_BUFFER_SIZE);
+  }
+#endif /* _WIN32 */
 }
 
 void get_fs_type(const char *path, char *result) {
+#ifndef _WIN32
 #if defined(HAVE_STRUCT_STATFS_F_FSTYPENAME) || defined(__FreeBSD__) ||     \
     defined(__OpenBSD__) || defined(__DragonFly__) || defined(__HAIKU__) || \
     (defined(__APPLE__) && defined(__MACH__)) || defined(__NetBSD__)
@@ -226,6 +268,31 @@ void get_fs_type(const char *path, char *result) {
 #endif /* HAVE_STRUCT_STATFS_F_FSTYPENAME */
 
   strncpy(result, "unknown", DEFAULT_TEXT_BUFFER_SIZE);
+#else /* _WIN32 */
+  char vol_root[MAX_PATH + 1];
+  strncpy(vol_root, path, MAX_PATH);
+  vol_root[MAX_PATH] = '\0';
+
+  /* GetVolumeInformationA needs a root path like "C:\" */
+  char root[4] = "A:\\";
+  if (path[0] != '\0' && path[1] == ':') {
+    root[0] = path[0];
+  } else if (path[0] == '/' || path[0] == '\\') {
+    /* UNC path or drive-relative - try current dir's drive */
+    char cwd[MAX_PATH];
+    if (GetCurrentDirectoryA(MAX_PATH, cwd)) {
+      root[0] = cwd[0];
+    }
+  }
+
+  char fs_type[32] = {0};
+  if (GetVolumeInformationA(root, nullptr, 0, nullptr, nullptr, nullptr,
+                            fs_type, sizeof(fs_type))) {
+    strncpy(result, fs_type, DEFAULT_TEXT_BUFFER_SIZE);
+  } else {
+    strncpy(result, "unknown", DEFAULT_TEXT_BUFFER_SIZE);
+  }
+#endif /* _WIN32 */
 }
 
 void init_fs_bar(struct text_object *obj, const char *arg) {

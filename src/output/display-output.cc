@@ -63,6 +63,12 @@ void register_output<output_t::X11>(display_outputs_t &outputs) {
   log_missing("X11", "BUILD_X11");
 }
 #endif
+#ifndef BUILD_WINDOWS
+template <>
+void register_output<output_t::WINDOWS>(display_outputs_t &outputs) {
+  log_missing("Windows", "BUILD_WINDOWS");
+}
+#endif
 
 /*
  * The selected and active display output.
@@ -87,6 +93,7 @@ bool initialize_display_outputs() {
   // - Fallbacks go last (in group)
   register_output<output_t::WAYLAND>(outputs);
   register_output<output_t::X11>(outputs);
+  register_output<output_t::WINDOWS>(outputs);
   register_output<output_t::HTTP>(outputs);
   register_output<output_t::FILE>(outputs);
   register_output<output_t::NCURSES>(outputs);

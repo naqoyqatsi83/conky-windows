@@ -119,7 +119,11 @@ void print_tcp_ping(struct text_object *obj, char *p, unsigned int p_max_size) {
   fd_set writefds;
 
   if (sock != -1) {
+#ifndef _WIN32
     fcntl(sock, F_SETFL, O_NONBLOCK | fcntl(sock, F_GETFL));
+#else
+    { u_long nonblock = 1; ioctlsocket(sock, FIONBIO, &nonblock); }
+#endif
 
     FD_ZERO(&writefds);
     FD_SET(sock, &writefds);
@@ -136,7 +140,13 @@ void print_tcp_ping(struct text_object *obj, char *p, unsigned int p_max_size) {
         gettimeofday(&tv2, nullptr);
         usecdiff =
             ((tv2.tv_sec - tv1.tv_sec) * 1000000) + tv2.tv_usec - tv1.tv_usec;
-        if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &ret, &len) == 0 &&
+        if (getsockopt(sock, SOL_SOCKET, SO_ERROR,
+#ifdef _WIN32
+                       reinterpret_cast<char *>(&ret),
+#else
+                       &ret,
+#endif
+                       &len) == 0 &&
             ret == 0) {
           snprintf(p, p_max_size, "%llu", (usecdiff / 1000U));
         } else {

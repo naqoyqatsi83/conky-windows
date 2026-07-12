@@ -2,7 +2,10 @@
 # https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvml_dev/
 
 # Select the prebuilt stub matching the target architecture.
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+if(WIN32)
+  set(NVML_ARCH_DIR "windows-x86_64")
+  set(NVML_IS_DYNAMIC TRUE)
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   set(NVML_ARCH_DIR "linux-x86_64")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
   # CUDA 13 dropped the embedded linux-aarch64 (Tegra) redist; aarch64 is
@@ -18,7 +21,11 @@ endif()
 
 set(NVML_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/${NVML_ARCH_DIR}")
 set(NVML_INCLUDE_DIR "${NVML_ROOT}/include")
-set(NVML_LIB "${NVML_ROOT}/lib/libnvidia-ml.a")
+if(NVML_IS_DYNAMIC)
+  set(NVML_LIB "${NVML_ROOT}/lib/libnvml.dll.a")
+else()
+  set(NVML_LIB "${NVML_ROOT}/lib/libnvidia-ml.a")
+endif()
 
 # Expose the bundled NVML version (first line of the version file).
 file(STRINGS "${NVML_ROOT}/version" NVIDIA_NVML_VERSION LIMIT_COUNT 1)

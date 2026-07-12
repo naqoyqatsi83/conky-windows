@@ -59,15 +59,19 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <sys/ioctl.h>
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 
-#include <pwd.h>
 #include <regex.h>
+#ifndef _WIN32
+#include <sys/ioctl.h>
+#include <pwd.h>
+#endif
 
 /******************************************
  * Defines								  *

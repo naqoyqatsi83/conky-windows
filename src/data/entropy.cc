@@ -51,6 +51,8 @@
 #include "os/haiku.h"
 #elif defined(__APPLE__) && defined(__MACH__)
 #include "os/darwin.h"
+#elif defined(_WIN32)
+#include "os/windows.h"
 #endif
 
 struct _entropy {
@@ -104,8 +106,18 @@ void print_password(struct text_object *obj, char *p, unsigned int p_max_size) {
   uintmax_t z = 0;
 
   if (-1 == (t = time(NULL))) { return; }
+#ifdef _WIN32
+  srand(static_cast<unsigned int>(t));
+#else
   srandom(static_cast<unsigned int>(t));
+#endif
 
-  for (; z < x && p_max_size - 1 > z; z++) { *p++ = letters[random() % len]; }
+  for (; z < x && p_max_size - 1 > z; z++) {
+#ifdef _WIN32
+    *p++ = letters[rand() % len];
+#else
+    *p++ = letters[random() % len];
+#endif
+  }
   *p = '\0';
 }
