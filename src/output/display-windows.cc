@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -36,6 +37,30 @@
 #ifdef BUILD_GUI
 #include "gui.h"
 #endif
+
+/* Crash diagnostic: log unhandled exceptions to aid debugging */
+#include <signal.h>
+static LONG WINAPI conky_crash_handler(EXCEPTION_POINTERS *ep) {
+  const char *desc;
+  switch (ep->ExceptionRecord->ExceptionCode) {
+    case EXCEPTION_ACCESS_VIOLATION: desc = "ACCESS_VIOLATION"; break;
+    case EXCEPTION_STACK_OVERFLOW:   desc = "STACK_OVERFLOW";   break;
+    case EXCEPTION_ILLEGAL_INSTRUCTION: desc = "ILLEGAL_INSTRUCTION"; break;
+    case EXCEPTION_INT_DIVIDE_BY_ZERO: desc = "DIVIDE_BY_ZERO"; break;
+    default:                         desc = "UNKNOWN";          break;
+  }
+  /* Can't use LOG_ERROR here since the crash handler runs in a very restricted
+   * context — spdlog might be corrupted. Use OutputDebugString + stderr. */
+  OutputDebugStringA("*** CONKY CRASH ***\n");
+  fprintf(stderr, "*** CONKY CRASH ***\n");
+  /* Also try spdlog — it may work depending on what crashed */
+  try {
+    LOG_ERROR("*** CRASH: {} at address 0x{:x} (code 0x{:08x})",
+              desc, (uintptr_t)ep->ExceptionRecord->ExceptionAddress,
+              (unsigned)ep->ExceptionRecord->ExceptionCode);
+  } catch (...) {}
+  return EXCEPTION_CONTINUE_SEARCH;
+}
 
 extern conky::vec2i text_start;  /* text start position in window */
 extern conky::vec2i text_offset; /* offset for start position */
@@ -292,6 +317,9 @@ bool display_output_windows::detect() {
 }
 
 bool display_output_windows::initialize() {
+  /* Register crash handler for diagnostics */
+  SetUnhandledExceptionFilter(conky_crash_handler);
+
   if (!embed_in_desktop()) { return false; }
   create_fonts();
   is_graphical = true;
@@ -670,16 +698,25 @@ bool display_output_windows::main_loop_wait(double t) {
 
     DWORD elapsed = GetTickCount() - start;
     if (elapsed >= timeout_ms) {
-      update_text();
-      update_text_area();
+      /* Monitor GDI handle usage every 1000 iterations to detect leaks */
+      static unsigned int iter_count = 0;
+      if (++iter_count % 1000 == 0) {
+        int gdi_objs = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
+        int user_objs = GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS);
+        LOG_INFO("diagnostics: GDI={} USER={} (iteration {})",
+                 gdi_objs, user_objs, iter_count);
+      }
 
-      /* Resize the window to match the content now that update_text_area()
-       * has computed text_start/text_size.  On the first call this shrinks
-       * the full-monitor window to just the content area; subsequent calls
-       * are no-ops when the size hasn't changed. */
-      resize_to_content();
-
-      draw_stuff();
+      try {
+        update_text();
+        update_text_area();
+        resize_to_content();
+        draw_stuff();
+      } catch (std::exception &e) {
+        LOG_ERROR("Unhandled C++ exception in update cycle: {}", e.what());
+      } catch (...) {
+        LOG_ERROR("Unknown C++ exception in update cycle");
+      }
       break;
     }
 
