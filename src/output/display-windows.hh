@@ -99,6 +99,7 @@ class display_output_windows : public display_output_base {
   // end_draw_text() calls UpdateLayeredWindow then cleans up.
   HDC mem_dc_{nullptr};
   HBITMAP mem_bitmap_{nullptr};
+  HBITMAP mem_old_bitmap_{nullptr};
   void *mem_bits_{nullptr};
   int win_w_{0}, win_h_{0};
 

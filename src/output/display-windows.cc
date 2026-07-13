@@ -418,8 +418,9 @@ void display_output_windows::begin_draw_text() {
     return;
   }
 
-  /* Select the DIB into the memory DC, saving the old (1x1 mono) bitmap */
-  SelectObject(mem_dc_, mem_bitmap_);
+  /* Select the DIB into the memory DC, saving the old (1x1 mono) bitmap so
+   * we can restore it in end_draw_text before cleanup. */
+  mem_old_bitmap_ = SelectObject(mem_dc_, mem_bitmap_);
 
   /* Initialize every pixel to ARGB(0,0,0,0) — fully transparent black */
   memset(mem_bits_, 0, (size_t)win_w_ * win_h_ * 4);
@@ -447,6 +448,11 @@ void display_output_windows::begin_draw_text() {
 
 void display_output_windows::end_draw_text() {
   if (mem_dc_ == nullptr || mem_bits_ == nullptr) {
+    /* Clean up if begin_draw_text failed mid-way (DC created but no DIB) */
+    if (mem_dc_ != nullptr && mem_bitmap_ == nullptr) {
+      DeleteDC(mem_dc_);
+      mem_dc_ = nullptr;
+    }
     if (hdc_ != nullptr && hdc_ != mem_dc_) {
       ReleaseDC(hwnd_, hdc_);
     }
@@ -483,6 +489,12 @@ void display_output_windows::end_draw_text() {
   UpdateLayeredWindow(hwnd_, nullptr, &pt_dst, &sz, mem_dc_, &pt_src, 0, &bf,
                       ULW_ALPHA);
 
+  /* Restore the original 1x1 bitmap before cleanup to avoid leaking GDI objects.
+   * Per MSDN, SelectObject must restore original objects before DeleteDC. */
+  if (mem_old_bitmap_ != nullptr) {
+    SelectObject(mem_dc_, mem_old_bitmap_);
+    mem_old_bitmap_ = nullptr;
+  }
   DeleteDC(mem_dc_);
   DeleteObject(mem_bitmap_);
   mem_dc_ = nullptr;
