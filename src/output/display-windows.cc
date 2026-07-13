@@ -420,7 +420,7 @@ void display_output_windows::begin_draw_text() {
 
   /* Select the DIB into the memory DC, saving the old (1x1 mono) bitmap so
    * we can restore it in end_draw_text before cleanup. */
-  mem_old_bitmap_ = SelectObject(mem_dc_, mem_bitmap_);
+  mem_old_bitmap_ = (HBITMAP)SelectObject(mem_dc_, mem_bitmap_);
 
   /* Initialize every pixel to ARGB(0,0,0,0) — fully transparent black */
   memset(mem_bits_, 0, (size_t)win_w_ * win_h_ * 4);
