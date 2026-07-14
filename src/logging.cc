@@ -7,7 +7,15 @@
 #include <spdlog/sinks/systemd_sink.h>
 #endif
 
+#ifdef _WIN32
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/rotating_file_sink.h>
+#endif
+
 static std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> stderr_sink;
+#ifdef _WIN32
+static std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> file_sink;
+#endif
 
 namespace {
 // __FILE__ for this file is "<project_root>/src/logging.cc"
@@ -174,6 +182,27 @@ void conky::log::init_logger() {
   auto journal_sink = std::make_shared<spdlog::sinks::systemd_sink_mt>();
   journal_sink->set_level(spdlog::level::warn);
   sinks.push_back(journal_sink);
+#endif
+
+#ifdef _WIN32
+  {
+    // On Windows GUI apps, stderr is invisible.  Log to a rotating file in the
+    // Conky data directory so crashes and diagnostics are captured.
+    const char *env = getenv("ALLUSERSPROFILE");
+    if (env != nullptr) {
+      std::string logdir = std::string(env) + "\\Conky";
+      std::string logpath = logdir + "\\conky.log";
+      try {
+        file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+            logpath, 512 * 1024, 3);
+        file_sink->set_level(spdlog::level::info);
+        sinks.push_back(file_sink);
+      } catch (...) {
+        // If file sink can't be created, continue without logging rather than crash
+        file_sink = nullptr;
+      }
+    }
+  }
 #endif
 
   auto logger =

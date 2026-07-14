@@ -39,6 +39,8 @@
 
 /* Need full text_object definition for obj->data.i */
 #include "../../../content/text_object.h"
+/* For human_readable() */
+#include "../../../conky.h"
 
 /* Parse GPU index from text object argument.
  * Defaults to 0 if arg is NULL or empty. */
@@ -54,8 +56,8 @@ void scan_gpu_arg(struct text_object *obj, const char *arg, void *free_at_crash,
 }
 
 /* Read the gpu.dat file written by lhm-temp.exe.
- * Format: id|temp_c|util_pct|mem_used_bytes|mem_total_bytes|fan_rpm|name
- * One line per GPU. */
+ * Format: id|temp_c|util_pct|mem_used_mib|mem_total_mib|fan_rpm|name
+ * Values from lhm-temp are in MiB — multiply by 1048576 before human_readable(). */
 int read_gpu_info(struct gpu_info *gpus, int max_gpus) {
   memset(gpus, 0, (size_t)max_gpus * sizeof(struct gpu_info));
 
@@ -139,7 +141,8 @@ void print_gpu_name(struct text_object *obj, char *p, unsigned int p_max_size) {
 void print_gpu_memused(struct text_object *obj, char *p, unsigned int p_max_size) {
   struct gpu_info gpu;
   if (get_gpu_for_obj(obj, &gpu) && gpu.mem_used > 0) {
-    snprintf(p, p_max_size, "%llu", gpu.mem_used);
+    // lhm-temp stores values in MiB; convert to bytes for human_readable
+    human_readable((long long)gpu.mem_used * 1048576LL, p, (int)p_max_size);
   } else {
     snprintf(p, p_max_size, "N/A");
   }
@@ -148,7 +151,8 @@ void print_gpu_memused(struct text_object *obj, char *p, unsigned int p_max_size
 void print_gpu_memtotal(struct text_object *obj, char *p, unsigned int p_max_size) {
   struct gpu_info gpu;
   if (get_gpu_for_obj(obj, &gpu) && gpu.mem_total > 0) {
-    snprintf(p, p_max_size, "%llu", gpu.mem_total);
+    // lhm-temp stores values in MiB; convert to bytes for human_readable
+    human_readable((long long)gpu.mem_total * 1048576LL, p, (int)p_max_size);
   } else {
     snprintf(p, p_max_size, "N/A");
   }

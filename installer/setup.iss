@@ -1,7 +1,7 @@
 ; Inno Setup script for Conky Windows Port
 
 #define MyAppName "Conky"
-#define MyAppVersion "1.24.3-wp.2"
+#define MyAppVersion "1.24.3-wp.3"
 #define MyAppPublisher "Conky project"
 #define MyAppURL "https://github.com/brndnhrbrt/conky"
 #define MyAppExeName "conky.exe"
@@ -47,7 +47,7 @@ Name: "{commonappdata}\Conky"
 [Files]
 Source: "{#SOURCE_DIR}\conky.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\conky_examples\Windows-btop.conkyrc"; DestDir: "{userdocs}\Conky"; Flags: ignoreversion; DestName: "btop.conkyrc"; AfterInstall: CreateConfig
+Source: "btop.conkyrc"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\..\..\installer\LibreHardwareMonitor\*"; DestDir: "{app}\LibreHardwareMonitor"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs; Tasks: install_lhm
 Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -131,34 +131,87 @@ begin
        '', SW_HIDE, ewWaitUntilTerminated, R);
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+{ -- Try to detect the discrete GPU index from gpu.dat -- }
+function DetectGpuIndex(): Integer;
+var
+  GpuPath: string;
+  Lines: TArrayOfString;
+  I, Idx, MaxIdx: Integer;
+  Name: string;
 begin
-  if (CurStep = ssPostInstall) and WizardIsTaskSelected('install_lhm') then
-    SetupTempHelper();
+  Result := 0;
+  MaxIdx := 0;
+  GpuPath := ExpandConstant('{commonappdata}\Conky\gpu.dat');
+  if not FileExists(GpuPath) then
+    exit;
+  if not LoadStringsFromFile(GpuPath, Lines) then
+    exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    Idx := 0;
+    Name := '';
+    if Lines[I] = '' then continue;
+    Idx := StrToIntDef(Copy(Lines[I], 1, Pos('|', Lines[I]) - 1), -1);
+    if Idx >= 0 then
+    begin
+      if Idx > MaxIdx then
+        MaxIdx := Idx;
+      Name := Lines[I];
+      if (Pos('NVIDIA', Name) > 0) or (Pos('GeForce', Name) > 0) or
+         (Pos('RTX', Name) > 0) or (Pos('GTX', Name) > 0) then
+      begin
+        Result := Idx;
+      end;
+    end;
+  end;
+  if (Result = 0) and (MaxIdx > 0) then
+    Result := MaxIdx;
 end;
 
+{ -- Create sample config from template with GPU index detection -- }
 procedure CreateConfig;
 var
   ConfigPath: string;
+  ConfigDir: string;
+  GpuIdx: Integer;
+  GpuIdxStr: string;
+  TemplatePath: string;
+  Lines: TArrayOfString;
+  I: Integer;
 begin
   ConfigPath := ExpandConstant('{userdocs}\Conky\btop.conkyrc');
-  if not FileExists(ConfigPath) then
+  ConfigDir := ExpandConstant('{userdocs}\Conky');
+  TemplatePath := ExpandConstant('{app}\btop.conkyrc');
+
+  // Ensure the config directory exists
+  if not DirExists(ConfigDir) then
+    CreateDir(ConfigDir);
+
+  // Detect GPU — wait a bit only if lhm-temp was actually installed
+  if FileExists(ExpandConstant('{app}\LibreHardwareMonitor\lhm-temp.exe')) then
+    Sleep(3000);
+  GpuIdx := DetectGpuIndex();
+  GpuIdxStr := IntToStr(GpuIdx);
+
+  // Load template, patch GPU index, write config
+  if LoadStringsFromFile(TemplatePath, Lines) then
   begin
-    SaveStringToFile(ConfigPath,
-      'conky.config = {' + #13#10 +
-      '  alignment = ''top_right'',' + #13#10 +
-      '  own_window = true,' + #13#10 +
-      '  gap_x = 20, gap_y = 60,' + #13#10 +
-      '  font = ''Consolas:size=10'',' + #13#10 +
-      '  default_color = ''white'',' + #13#10 +
-      '  update_interval = 1.0,' + #13#10 +
-      '  minimum_width = 340,' + #13#10 +
-      '  draw_shades = false,' + #13#10 +
-      '}' + #13#10 + #13#10 +
-      'conky.text = [[' + #13#10 +
-      '${font Segoe UI:bold:size=12}${alignc}System Monitor' + #13#10 +
-      '${hr 2}' + #13#10 +
-      '${font Segoe UI:bold:size=10}${exec powershell -Command "$env:COMPUTERNAME"}' + #13#10 +
-      ']];' + #13#10, False);
+    for I := 0 to GetArrayLength(Lines) - 1 do
+    begin
+      StringChangeEx(Lines[I], 'GPU_IDX', GpuIdxStr, True);
+    end;
+    SaveStringsToFile(ConfigPath, Lines, False);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // Always launch lhm-temp (needed for CPU/GPU sensor data)
+    SetupTempHelper();
+
+    // Generate config with GPU detection (handles its own timing)
+    CreateConfig();
   end;
 end;

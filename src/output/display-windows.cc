@@ -23,6 +23,7 @@
 #include <config.h>
 
 #include <algorithm>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -40,25 +41,138 @@
 
 /* Crash diagnostic: log unhandled exceptions to aid debugging */
 #include <signal.h>
+
+/* Minidump types — defined here so we don't need dbghelp.h from the SDK */
+#pragma pack(push, 8)
+typedef struct _conky_minidump_exception_info {
+  DWORD ThreadId;
+  EXCEPTION_POINTERS *ExceptionPointers;
+  BOOL ClientPointers;
+} conky_minidump_exception_info;
+#pragma pack(pop)
+
+/* MiniDumpNormal = 0 */
+typedef BOOL(WINAPI *mini_dump_write_fn)(HANDLE, DWORD, HANDLE, ULONG,
+                                         conky_minidump_exception_info *, void *,
+                                         void *);
+
+static void write_crash_report(const char *desc, EXCEPTION_POINTERS *ep) {
+  /* Resolve output directory */
+  const char *env = getenv("ALLUSERSPROFILE");
+  char dir[MAX_PATH];
+  char dump_path[MAX_PATH];
+  char report_path[MAX_PATH];
+  if (env != nullptr) {
+    snprintf(dir, sizeof(dir), "%s\\Conky", env);
+    snprintf(dump_path, sizeof(dump_path), "%s\\Conky\\conky.dmp", env);
+    snprintf(report_path, sizeof(report_path), "%s\\Conky\\conky_crash.txt", env);
+  } else {
+    snprintf(dir, sizeof(dir), ".");
+    snprintf(dump_path, sizeof(dump_path), "conky.dmp");
+    snprintf(report_path, sizeof(report_path), "conky_crash.txt");
+  }
+
+  /* --- Write minidump (best-effort) --- */
+  HMODULE dbghelp = LoadLibraryA("dbghelp.dll");
+  if (dbghelp != nullptr) {
+    auto mdfn = reinterpret_cast<mini_dump_write_fn>(
+        GetProcAddress(dbghelp, "MiniDumpWriteDump"));
+    if (mdfn != nullptr) {
+      HANDLE hFile =
+          CreateFileA(dump_path, GENERIC_WRITE, 0, nullptr,
+                      CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+      if (hFile != INVALID_HANDLE_VALUE) {
+        conky_minidump_exception_info mei;
+        mei.ThreadId = GetCurrentThreadId();
+        mei.ExceptionPointers = ep;
+        mei.ClientPointers = FALSE;
+        mdfn(GetCurrentProcess(), GetCurrentProcessId(), hFile, 0,
+             &mei, nullptr, nullptr);
+        CloseHandle(hFile);
+      }
+    }
+    FreeLibrary(dbghelp);
+  }
+
+  /* --- Write text crash report (avoid std::string — crash context) --- */
+  HANDLE hReport =
+      CreateFileA(report_path, GENERIC_WRITE, 0, nullptr,
+                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (hReport == INVALID_HANDLE_VALUE) return;
+
+  SYSTEMTIME st;
+  GetLocalTime(&st);
+
+  char buf[4096];
+  int pos = 0;
+  auto w = [&](const char *s) {
+    size_t len = strlen(s);
+    if (pos + (int)len < (int)sizeof(buf)) {
+      memcpy(buf + pos, s, len);
+      pos += (int)len;
+    }
+  };
+  auto f = [&](const char *fmt, ...) {
+    char tmp[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(tmp, sizeof(tmp), fmt, ap);
+    va_end(ap);
+    if (n > 0) w(tmp);
+  };
+
+  w("Conky Crash Report\n");
+  w("==================\n");
+  f("Time: %04d-%02d-%02d %02d:%02d:%02d\n",
+    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+  f("Exception: %s\n", desc);
+  f("Address: 0x%llx\n",
+    (unsigned long long)(uintptr_t)ep->ExceptionRecord->ExceptionAddress);
+  f("Code: 0x%08lx\n", (unsigned long)ep->ExceptionRecord->ExceptionCode);
+  f("Flags: 0x%lx\n", (unsigned long)ep->ExceptionRecord->ExceptionFlags);
+  f("NumberParameters: %lu\n", (unsigned long)ep->ExceptionRecord->NumberParameters);
+  DWORD np = ep->ExceptionRecord->NumberParameters;
+  if (np > 15) np = 15;
+  for (DWORD i = 0; i < np; i++) {
+    f("  [%lu] = 0x%llx\n", i,
+      (unsigned long long)ep->ExceptionRecord->ExceptionInformation[i]);
+  }
+
+  DWORD written;
+  WriteFile(hReport, buf, (DWORD)pos, &written, nullptr);
+  CloseHandle(hReport);
+}
+
 static LONG WINAPI conky_crash_handler(EXCEPTION_POINTERS *ep) {
   const char *desc;
   switch (ep->ExceptionRecord->ExceptionCode) {
-    case EXCEPTION_ACCESS_VIOLATION: desc = "ACCESS_VIOLATION"; break;
-    case EXCEPTION_STACK_OVERFLOW:   desc = "STACK_OVERFLOW";   break;
-    case EXCEPTION_ILLEGAL_INSTRUCTION: desc = "ILLEGAL_INSTRUCTION"; break;
-    case EXCEPTION_INT_DIVIDE_BY_ZERO: desc = "DIVIDE_BY_ZERO"; break;
-    default:                         desc = "UNKNOWN";          break;
+    case EXCEPTION_ACCESS_VIOLATION:
+      desc = "ACCESS_VIOLATION";
+      break;
+    case EXCEPTION_STACK_OVERFLOW:
+      desc = "STACK_OVERFLOW";
+      break;
+    case EXCEPTION_ILLEGAL_INSTRUCTION:
+      desc = "ILLEGAL_INSTRUCTION";
+      break;
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:
+      desc = "DIVIDE_BY_ZERO";
+      break;
+    default:
+      desc = "UNKNOWN";
+      break;
   }
-  /* Can't use LOG_ERROR here since the crash handler runs in a very restricted
-   * context — spdlog might be corrupted. Use OutputDebugString + stderr. */
-  OutputDebugStringA("*** CONKY CRASH ***\n");
-  fprintf(stderr, "*** CONKY CRASH ***\n");
+
+  /* Write crash report + minidump before anything else */
+  write_crash_report(desc, ep);
+
   /* Also try spdlog — it may work depending on what crashed */
   try {
-    LOG_ERROR("*** CRASH: {} at address 0x{:x} (code 0x{:08x})",
-              desc, (uintptr_t)ep->ExceptionRecord->ExceptionAddress,
+    LOG_ERROR("*** CRASH: {} at address 0x{:x} (code 0x{:08x})", desc,
+              (uintptr_t)ep->ExceptionRecord->ExceptionAddress,
               (unsigned)ep->ExceptionRecord->ExceptionCode);
-  } catch (...) {}
+  } catch (...) {
+  }
   return EXCEPTION_CONTINUE_SEARCH;
 }
 

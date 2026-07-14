@@ -227,7 +227,9 @@ void print_downspeed(struct text_object *obj, char *p,
 
   if (ns == nullptr) { return; }
 
-  human_readable(ns->recv_speed, p, p_max_size);
+  char tmp[64];
+  human_readable(ns->recv_speed, tmp, sizeof(tmp));
+  snprintf(p, p_max_size, "%s/s", tmp);
 }
 
 void print_downspeedf(struct text_object *obj, char *p,
@@ -244,7 +246,9 @@ void print_upspeed(struct text_object *obj, char *p, unsigned int p_max_size) {
 
   if (ns == nullptr) { return; }
 
-  human_readable(ns->trans_speed, p, p_max_size);
+  char tmp[64];
+  human_readable(ns->trans_speed, tmp, sizeof(tmp));
+  snprintf(p, p_max_size, "%s/s", tmp);
 }
 
 void print_upspeedf(struct text_object *obj, char *p, unsigned int p_max_size) {

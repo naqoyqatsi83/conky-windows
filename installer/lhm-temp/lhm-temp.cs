@@ -109,31 +109,48 @@ namespace ConkyTemp
                                             util = sensor.Value.Value;
                                         break;
                                     case SensorType.SmallData:
-                                        // Memory usage — try various naming patterns
                                         if (sensor.Value.Value >= 0)
                                         {
                                             string sn = sensor.Name;
                                             double sv = sensor.Value.Value;
-                                            if ((sn.IndexOf("Used", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                                 (sn.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                  sn.IndexOf("VRAM", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                  sn.IndexOf("D3D", StringComparison.OrdinalIgnoreCase) >= 0)))
+
+                                            // Exclude D3D Shared Memory — that's system RAM
+                                            // shared with the GPU, not dedicated VRAM.
+                                            bool isShared = sn.IndexOf("Shared", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                                            // -- Used memory (only dedicated VRAM) --
+                                            if (sn.IndexOf("Used", StringComparison.OrdinalIgnoreCase) >= 0 && !isShared)
                                             {
-                                                memUsed = Math.Max(memUsed, (ulong)Math.Round(sv));
+                                                if (sn.IndexOf("GPU Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                    sn.IndexOf("Dedicated Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                    sn.IndexOf("VRAM", StringComparison.OrdinalIgnoreCase) >= 0)
+                                                {
+                                                    memUsed = Math.Max(memUsed, (ulong)Math.Round(sv));
+                                                }
                                             }
-                                            if ((sn.IndexOf("Total", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                                 (sn.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                                  sn.IndexOf("VRAM", StringComparison.OrdinalIgnoreCase) >= 0)))
+
+                                            // -- Total memory (only dedicated VRAM) --
+                                            if (sn.IndexOf("Total", StringComparison.OrdinalIgnoreCase) >= 0 && !isShared)
                                             {
-                                                memTotal = Math.Max(memTotal, (ulong)Math.Round(sv));
+                                                if (sn.IndexOf("GPU Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                    sn.IndexOf("Dedicated Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                    sn.IndexOf("VRAM", StringComparison.OrdinalIgnoreCase) >= 0)
+                                                {
+                                                    memTotal = Math.Max(memTotal, (ulong)Math.Round(sv));
+                                                }
                                             }
-                                            // Also try single sensor with both Used+Total (e.g. "GPU Memory Used")
-                                            if (sn.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                                sn.IndexOf("Free", StringComparison.OrdinalIgnoreCase) >= 0 && memTotal > 0)
+
+                                            // Free → Used calculation (for sensors like "GPU Memory Free")
+                                            if (!isShared &&
+                                                sn.IndexOf("Free", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                                (sn.IndexOf("GPU Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                 sn.IndexOf("Dedicated Memory", StringComparison.OrdinalIgnoreCase) >= 0))
                                             {
                                                 ulong free = (ulong)Math.Round(sv);
-                                                ulong usedFromFree = memTotal > free ? memTotal - free : 0;
-                                                memUsed = Math.Max(memUsed, usedFromFree);
+                                                if (memTotal > free)
+                                                {
+                                                    memUsed = Math.Max(memUsed, memTotal - free);
+                                                }
                                             }
                                         }
                                         break;
@@ -176,7 +193,7 @@ namespace ConkyTemp
                         }
                     }
 
-                    // Write debug dump (keep last N runs)
+                    // Write debug dump
                     try { File.WriteAllLines(debugFile, debugLines); } catch { }
 
                     if (gpuLines.Count > 0)
