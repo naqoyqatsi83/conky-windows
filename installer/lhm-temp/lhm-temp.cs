@@ -114,7 +114,8 @@ namespace ConkyTemp
                                     if (sensor.Name.IndexOf("Used", StringComparison.OrdinalIgnoreCase) >= 0 &&
                                         sensor.Name.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0)
                                     {
-                                        double.TryParse(sensor.Value.ToString(), out double mem);
+                                        double mem;
+                                        double.TryParse(sensor.Value.ToString(), out mem);
                                         memUsed = (ulong)mem;
                                     }
                                 }
