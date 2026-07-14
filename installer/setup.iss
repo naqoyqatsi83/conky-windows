@@ -1,7 +1,7 @@
 ; Inno Setup script for Conky Windows Port
 
 #define MyAppName "Conky"
-#define MyAppVersion "1.24.3-wp.1"
+#define MyAppVersion "1.24.3-wp.2"
 #define MyAppPublisher "Conky project"
 #define MyAppURL "https://github.com/brndnhrbrt/conky"
 #define MyAppExeName "conky.exe"
