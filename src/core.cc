@@ -82,9 +82,9 @@
 #ifdef BUILD_NVIDIA_NVML
 #include "data/hardware/nvidia_nvml.h"
 #endif /* BUILD_NVIDIA_NVML */
-#ifdef BUILD_WIN32
+#ifdef _WIN32
 #include "data/os/windows/gpu.h"
-#endif /* BUILD_WIN32 */
+#endif /* _WIN32 */
 
 #include <inttypes.h>
 #include "content/scroll.h"
@@ -2021,7 +2021,7 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
   obj->callbacks.gaugeval = &get_nvidia_barval;
   obj->callbacks.free = &free_nvidia;
 #endif /* BUILD_NVIDIA */
-#ifdef BUILD_WIN32
+#ifdef _WIN32
   END OBJ(gputemp, 0)
       scan_gpu_arg(obj, arg, free_at_crash, "gputemp");
   obj->callbacks.print = &print_gpu_temp;
@@ -2051,7 +2051,7 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
     scan_graph(obj, arg, 100.0, FALSE, fmt::format("gpu:{}", obj->data.i));
   }
   obj->callbacks.graphval = &gpu_graphval;
-#endif /* BUILD_WIN32 */
+#endif /* _WIN32 */
 #ifdef BUILD_APCUPSD
   END OBJ_ARG(
       apcupsd, &update_apcupsd,
