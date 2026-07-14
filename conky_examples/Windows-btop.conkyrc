@@ -26,13 +26,13 @@ Temp:               ${alignr}${acpitemp}C
 ${cpugraph 50,340 FFA500 FF4500}
 
 
-${font Segoe UI:bold:size=10}GPU [${gpuname 0}]
+${font Segoe UI:bold:size=10}GPU [${gpuname 1}]
 ${font Consolas:size=10}
-GPU Temp:           ${alignr}${gputemp 0}C
-GPU Util:           ${alignr}${gpuutil 0}%
-Fan Speed:          ${alignr}${gpufan 0} RPM
-VRAM Used:          ${alignr}${gpumemused 0}
-VRAM Total:         ${alignr}${gpumemtotal 0}
+GPU Temp:           ${alignr}${gputemp 1}C
+GPU Util:           ${alignr}${gpuutil 1}%
+Fan Speed:          ${alignr}${gpufan 1} RPM
+VRAM Used:          ${alignr}${gpumemused 1}
+VRAM Total:         ${alignr}${gpumemtotal 1}
 ${nvidiagraph gpuutil 50,340 00FF00 00AA00 0}
 
 

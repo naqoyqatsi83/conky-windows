@@ -9,15 +9,13 @@ namespace ConkyTemp
     {
         static void Main()
         {
-            // Ensure working directory is our executable location so .NET
-            // resolves LibreHardwareMonitorLib.dll correctly regardless of
-            // how the task scheduler launched us.
             Environment.CurrentDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
             string appData = Environment.GetFolderPath(
                 Environment.SpecialFolder.CommonApplicationData);
             string tempFile = Path.Combine(appData, "Conky", "temp.dat");
             string gpuFile = Path.Combine(appData, "Conky", "gpu.dat");
+            string debugFile = Path.Combine(appData, "Conky", "lhm_debug.txt");
             Directory.CreateDirectory(Path.GetDirectoryName(tempFile));
 
             var computer = new Computer
@@ -70,109 +68,123 @@ namespace ConkyTemp
 
                     // ---- GPU data ----
                     var gpuLines = new System.Collections.Generic.List<string>();
+                    var debugLines = new System.Collections.Generic.List<string>();
                     foreach (var hardware in computer.Hardware)
                     {
                         hardware.Update();
 
-                        // Detect GPU hardware
                         if (hardware.HardwareType == HardwareType.GpuNvidia ||
                             hardware.HardwareType == HardwareType.GpuAmd ||
                             hardware.HardwareType == HardwareType.GpuIntel)
                         {
                             int id = gpuLines.Count;
-                            int temp = 0;
-                            int util = 0;
+                            double temp = 0;
+                            double util = 0;
                             ulong memUsed = 0;
                             ulong memTotal = 0;
-                            int fan = 0;
-                            string name = hardware.Name.Replace("|", "/");  // pipe is our separator
+                            double fan = 0;
+                            string name = hardware.Name.Replace("|", "/");
 
+                            debugLines.Add("=== GPU " + id + ": " + hardware.HardwareType + " - " + name + " ===");
+
+                            // Collect ALL sensors at the top level
                             foreach (var sensor in hardware.Sensors)
                             {
                                 if (!sensor.Value.HasValue) continue;
+                                debugLines.Add(string.Format("  Sensor: {0} | {1} = {2}",
+                                    sensor.SensorType, sensor.Name, sensor.Value));
 
-                                if (sensor.SensorType == SensorType.Temperature &&
-                                    sensor.Value.Value > 0)
+                                switch (sensor.SensorType)
                                 {
-                                    temp = (int)Math.Round(sensor.Value.Value);
-                                }
-                                else if (sensor.SensorType == SensorType.Load &&
-                                         sensor.Value.Value >= 0)
-                                {
-                                    // "GPU Core" load is the overall GPU utilization
-                                    if (sensor.Name.IndexOf("Core", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                        sensor.Name.IndexOf("GPU", StringComparison.OrdinalIgnoreCase) >= 0)
-                                    {
-                                        if (sensor.Value.Value > util)
-                                            util = (int)Math.Round(sensor.Value.Value);
-                                    }
-                                }
-                                else if (sensor.SensorType == SensorType.SmallData &&
-                                         sensor.Value.Value >= 0)
-                                {
-                                    // Memory used (bytes) — some LHM builds report this as SmallData
-                                    if (sensor.Name.IndexOf("Used", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                                        sensor.Name.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0)
-                                    {
-                                        double mem;
-                                        double.TryParse(sensor.Value.ToString(), out mem);
-                                        memUsed = (ulong)mem;
-                                    }
+                                    case SensorType.Temperature:
+                                        if (sensor.Value.Value > 0 && sensor.Value.Value > temp)
+                                            temp = sensor.Value.Value;
+                                        break;
+                                    case SensorType.Load:
+                                        // Utilization = any Load that isn't memory-related
+                                        if (sensor.Name.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                            sensor.Name.IndexOf("Mem Controller", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                            sensor.Name.IndexOf("MC", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                            sensor.Value.Value > util)
+                                            util = sensor.Value.Value;
+                                        break;
+                                    case SensorType.SmallData:
+                                        // Memory usage — try various naming patterns
+                                        if (sensor.Value.Value >= 0)
+                                        {
+                                            string sn = sensor.Name;
+                                            double sv = sensor.Value.Value;
+                                            if ((sn.IndexOf("Used", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                                 (sn.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                  sn.IndexOf("VRAM", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                  sn.IndexOf("D3D", StringComparison.OrdinalIgnoreCase) >= 0)))
+                                            {
+                                                memUsed = Math.Max(memUsed, (ulong)Math.Round(sv));
+                                            }
+                                            if ((sn.IndexOf("Total", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                                 (sn.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                                  sn.IndexOf("VRAM", StringComparison.OrdinalIgnoreCase) >= 0)))
+                                            {
+                                                memTotal = Math.Max(memTotal, (ulong)Math.Round(sv));
+                                            }
+                                            // Also try single sensor with both Used+Total (e.g. "GPU Memory Used")
+                                            if (sn.IndexOf("Mem", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                                sn.IndexOf("Free", StringComparison.OrdinalIgnoreCase) >= 0 && memTotal > 0)
+                                            {
+                                                ulong free = (ulong)Math.Round(sv);
+                                                ulong usedFromFree = memTotal > free ? memTotal - free : 0;
+                                                memUsed = Math.Max(memUsed, usedFromFree);
+                                            }
+                                        }
+                                        break;
+                                    case SensorType.Fan:
+                                        if (sensor.Value.Value > 0 && sensor.Value.Value > fan)
+                                            fan = sensor.Value.Value;
+                                        break;
                                 }
                             }
 
-                            // Sub-hardware (e.g. individual GPU cores on multi-GPU)
+                            // Also check sub-hardware for fans, temps, and additional sensors
                             foreach (var sub in hardware.SubHardware)
                             {
                                 sub.Update();
+                                debugLines.Add("  Sub: " + sub.Name);
                                 foreach (var sensor in sub.Sensors)
                                 {
                                     if (!sensor.Value.HasValue) continue;
-                                    if (sensor.SensorType == SensorType.Temperature &&
-                                        sensor.Value.Value > 0 && temp == 0)
+                                    debugLines.Add(string.Format("    {0} | {1} = {2}",
+                                        sensor.SensorType, sensor.Name, sensor.Value));
+
+                                    if (sensor.SensorType == SensorType.Fan && sensor.Value.Value > 0 && sensor.Value.Value > fan)
+                                        fan = sensor.Value.Value;
+                                    if (sensor.SensorType == SensorType.Temperature && sensor.Value.Value > 0 && sensor.Value.Value > temp)
+                                        temp = sensor.Value.Value;
+                                    if (sensor.SensorType == SensorType.Load && sensor.Value.Value > 0 && sensor.Value.Value > util)
                                     {
-                                        temp = (int)Math.Round(sensor.Value.Value);
-                                    }
-                                    if (sensor.SensorType == SensorType.Fan &&
-                                        sensor.Value.Value > 0 && fan == 0)
-                                    {
-                                        fan = (int)Math.Round(sensor.Value.Value);
+                                        if (sensor.Name.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) < 0)
+                                            util = sensor.Value.Value;
                                     }
                                 }
                             }
 
-                            // Also check all sensors for memory/fan at top level
-                            foreach (var sensor in hardware.Sensors)
-                            {
-                                if (!sensor.Value.HasValue) continue;
-                                if (sensor.SensorType == SensorType.Load &&
-                                    sensor.Name.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0)
-                                {
-                                    // Memory controller load — approximate usage %
-                                }
-                                else if (sensor.SensorType == SensorType.Fan &&
-                                         sensor.Value.Value > 0 && fan == 0)
-                                {
-                                    fan = (int)Math.Round(sensor.Value.Value);
-                                }
-                            }
+                            debugLines.Add(string.Format("  => RESULT: temp={0} util={1} memUsed={2} memTotal={3} fan={4}",
+                                temp, util, memUsed, memTotal, fan));
 
-                            // For memory, compute from Load + total VRAM if available
-                            // LibreHardwareMonitor reports memory used/total via SmallData or through Load
-                            // We'll try to get more accurate values later — for now report what we can
                             gpuLines.Add(string.Format("{0}|{1}|{2}|{3}|{4}|{5}|{6}",
-                                id, temp, util, memUsed, memTotal, fan, name));
+                                id, (int)Math.Round(temp), (int)Math.Round(util),
+                                memUsed, memTotal, (int)Math.Round(fan), name));
                         }
                     }
 
-                    // Write GPU data
+                    // Write debug dump (keep last N runs)
+                    try { File.WriteAllLines(debugFile, debugLines); } catch { }
+
                     if (gpuLines.Count > 0)
                     {
                         File.WriteAllLines(gpuFile, gpuLines);
                     }
                     else
                     {
-                        // Empty file = no GPUs found
                         File.WriteAllText(gpuFile, "");
                     }
                 }
