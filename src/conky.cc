@@ -1097,6 +1097,8 @@ static inline void draw_graph_bars(special_node *current,
                                    conky::vec2i &text_offset, int i, int &j,
                                    int w, int &colour_idx, int cur_x, int by,
                                    int h) {
+  /* Bounds check: j must be within graph_data */
+  if (j < 0 || static_cast<size_t>(j) >= current->graph_data.size()) { ++j; return; }
   double graphheight = current->graph_data[j] * (h - 1) / current->scale;
   /* Check if graphheight is less than the minheight threshold, if so we must
    * change it to the threshold */
@@ -1258,7 +1260,7 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
   {
     std::string line_for_log;
     for (char *cp = s; *cp && *cp != '\n'; cp++) {
-      if (*cp == SPECIAL_CHAR) line_for_log += '•';
+      if (*cp == SPECIAL_CHAR) line_for_log += '#';
       else if (*cp >= 32) line_for_log += *cp;
       else line_for_log += '?';
     }

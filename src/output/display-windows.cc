@@ -23,6 +23,8 @@
 #include <config.h>
 
 #include <algorithm>
+#include <csetjmp>
+#include <csignal>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -91,7 +93,8 @@ static void write_crash_report(const char *desc, EXCEPTION_POINTERS *ep) {
         CloseHandle(hFile);
       }
     }
-    FreeLibrary(dbghelp);
+    /* Don't call FreeLibrary here — in a crash handler it may trigger a
+     * secondary fault (DllMain callbacks can access freed memory). */
   }
 
   /* --- Write text crash report (avoid std::string — crash context) --- */
@@ -810,6 +813,16 @@ void display_output_windows::resize_to_content() {
   GetWindowRect(hwnd_, &window_rect_);
 }
 
+/* SIGSEGV recovery: setjmp/longjmp around the update/draw cycle.
+ * If GDI or graph drawing causes an access violation, we longjmp back
+ * to the main loop and continue. The next iteration re-creates the DIB. */
+static jmp_buf crash_jmp;
+namespace {
+extern "C" void sigsegv_recovery(int) {
+  longjmp(crash_jmp, 1);
+}
+}
+
 bool display_output_windows::main_loop_wait(double t) {
   MSG msg;
   DWORD timeout_ms = (DWORD)std::max(t * 1000, 10.0);
@@ -834,10 +847,16 @@ bool display_output_windows::main_loop_wait(double t) {
       }
 
       try {
-        update_text();
-        update_text_area();
-        resize_to_content();
-        draw_stuff();
+        if (setjmp(crash_jmp) == 0) {
+          signal(SIGSEGV, sigsegv_recovery);
+          update_text();
+          update_text_area();
+          resize_to_content();
+          draw_stuff();
+          signal(SIGSEGV, SIG_DFL);
+        } else {
+          LOG_ERROR("*** RECOVERED from SIGSEGV in update/draw cycle ***");
+        }
       } catch (std::exception &e) {
         LOG_ERROR("Unhandled C++ exception in update cycle: {}", e.what());
       } catch (...) {
