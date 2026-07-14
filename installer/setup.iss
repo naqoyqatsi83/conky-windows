@@ -72,6 +72,7 @@ Filename: "schtasks.exe"; Parameters: "/DELETE /TN ""ConkyTempHelper"" /F"; Flag
 
 [UninstallDelete]
 Type: files; Name: "{commonappdata}\Conky\temp.dat"
+Type: files; Name: "{commonappdata}\Conky\gpu.dat"
 Type: dirifempty; Name: "{commonappdata}\Conky"
 Type: filesandordirs; Name: "{app}\LibreHardwareMonitor"
 Type: files; Name: "{app}\conky.exe"

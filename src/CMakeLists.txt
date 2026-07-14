@@ -266,6 +266,8 @@ if(OS_WINDOWS)
   set(windows_sources
     data/os/windows.cc
     data/os/windows.h
+    data/os/windows/gpu.cc
+    data/os/windows/gpu.h
     output/display-windows.cc
     output/display-windows.hh
   )

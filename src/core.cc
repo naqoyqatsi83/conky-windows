@@ -82,6 +82,9 @@
 #ifdef BUILD_NVIDIA_NVML
 #include "data/hardware/nvidia_nvml.h"
 #endif /* BUILD_NVIDIA_NVML */
+#ifdef BUILD_WIN32
+#include "data/os/windows/gpu.h"
+#endif /* BUILD_WIN32 */
 
 #include <inttypes.h>
 #include "content/scroll.h"
@@ -2018,6 +2021,37 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
   obj->callbacks.gaugeval = &get_nvidia_barval;
   obj->callbacks.free = &free_nvidia;
 #endif /* BUILD_NVIDIA */
+#ifdef BUILD_WIN32
+  END OBJ(gputemp, 0)
+      scan_gpu_arg(obj, arg, free_at_crash, "gputemp");
+  obj->callbacks.print = &print_gpu_temp;
+  END OBJ(gpuutil, 0)
+      scan_gpu_arg(obj, arg, free_at_crash, "gpuutil");
+  obj->callbacks.print = &print_gpu_util;
+  END OBJ(gpuname, 0)
+      scan_gpu_arg(obj, arg, free_at_crash, "gpuname");
+  obj->callbacks.print = &print_gpu_name;
+  END OBJ(gpumemused, 0)
+      scan_gpu_arg(obj, arg, free_at_crash, "gpumemused");
+  obj->callbacks.print = &print_gpu_memused;
+  END OBJ(gpumemtotal, 0)
+      scan_gpu_arg(obj, arg, free_at_crash, "gpumemtotal");
+  obj->callbacks.print = &print_gpu_memtotal;
+  END OBJ(gpufan, 0)
+      scan_gpu_arg(obj, arg, free_at_crash, "gpufan");
+  obj->callbacks.print = &print_gpu_fan;
+  END OBJ(gpugraph, 0) {
+    int offset = 0;
+    if (arg && sscanf(arg, "%d %n", &obj->data.i, &offset) > 0) {
+      arg += offset;
+    } else {
+      obj->data.i = 0;
+      arg = "";
+    }
+    scan_graph(obj, arg, 100.0, FALSE, fmt::format("gpu:{}", obj->data.i));
+  }
+  obj->callbacks.graphval = &gpu_graphval;
+#endif /* BUILD_WIN32 */
 #ifdef BUILD_APCUPSD
   END OBJ_ARG(
       apcupsd, &update_apcupsd,

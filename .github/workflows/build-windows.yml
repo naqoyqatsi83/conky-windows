@@ -35,7 +35,7 @@ jobs:
         shell: msys2 {0}
         run: |
           cmake -B build -G "MinGW Makefiles" \
-            -DBUILD_NVIDIA_NVML=OFF \
+            -DBUILD_NVIDIA_NVML=ON \
             -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++" \
             -DCMAKE_C_FLAGS="-static-libgcc -static-libstdc++" \
             -DLUA_INCLUDE_DIR=/mingw64/include \
