@@ -41,6 +41,8 @@
 #include "../../../content/text_object.h"
 /* For human_readable() */
 #include "../../../conky.h"
+/* For trigger_lhm_helper() */
+#include "../windows.h"
 
 /* Parse GPU index from text object argument.
  * Defaults to 0 if arg is NULL or empty. */
@@ -57,7 +59,10 @@ void scan_gpu_arg(struct text_object *obj, const char *arg, void *free_at_crash,
 
 /* Read the gpu.dat file written by lhm-temp.exe.
  * Format: id|temp_c|util_pct|mem_used_mib|mem_total_mib|fan_rpm|name
- * Values from lhm-temp are in MiB — multiply by 1048576 before human_readable(). */
+ * Values from lhm-temp are in MiB — multiply by 1048576 before human_readable().
+ *
+ * If the file is missing or stale (>15 s without update), triggers the
+ * lhm-temp helper to restart it — GPU data depends on this process. */
 int read_gpu_info(struct gpu_info *gpus, int max_gpus) {
   memset(gpus, 0, (size_t)max_gpus * sizeof(struct gpu_info));
 
@@ -65,8 +70,32 @@ int read_gpu_info(struct gpu_info *gpus, int max_gpus) {
   if (env == nullptr) return 0;
 
   std::string path = std::string(env) + "\\Conky\\gpu.dat";
+
+  /* Check for staleness using file modification time */
+  {
+    HANDLE h = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+      trigger_lhm_helper();
+      return 0;
+    }
+    FILETIME ftWrite = {}, ftNow = {};
+    GetFileTime(h, nullptr, nullptr, &ftWrite);
+    GetSystemTimeAsFileTime(&ftNow);
+    CloseHandle(h);
+    ULARGE_INTEGER uW = {{ftWrite.dwLowDateTime, ftWrite.dwHighDateTime}};
+    ULARGE_INTEGER uN = {{ftNow.dwLowDateTime, ftNow.dwHighDateTime}};
+    /* 15 seconds in FILETIME units (100-ns intervals) */
+    if (uN.QuadPart - uW.QuadPart > 150000000ULL) {
+      trigger_lhm_helper();
+    }
+  }
+
   FILE *f = fopen(path.c_str(), "r");
-  if (f == nullptr) return 0;
+  if (f == nullptr) {
+    trigger_lhm_helper();
+    return 0;
+  }
 
   int count = 0;
   char line[512];

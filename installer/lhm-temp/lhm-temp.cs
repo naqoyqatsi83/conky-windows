@@ -64,7 +64,11 @@ namespace ConkyTemp
                         }
                     }
                     write_cpu:
-                    File.WriteAllText(tempFile, result + "\n");
+                    // Only write temp.dat when we have a real temperature
+                    // (value > 0).  On first iteration sensors may not be
+                    // ready yet; skipping the write lets callers retry.
+                    if (result != "-1")
+                        File.WriteAllText(tempFile, result + "\n");
 
                     // ---- GPU data ----
                     var gpuLines = new System.Collections.Generic.List<string>();

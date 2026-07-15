@@ -548,25 +548,35 @@ static struct WmiCpuTemp {
     return t;
   }
 
-  /* Fire schtasks /RUN in background to restart the helper. No wait —
-   * the next update cycle will read fresh data.  Safe from non-elevated
-   * processes: we are asking the Task Scheduler to run a pre-configured
-   * task, which always runs elevated regardless of who triggers it. */
+  /* Launch lhm-temp.exe directly by finding it relative to conky's path.
+   * Returns true if the process was successfully started. */
+  bool launch_lhm_direct() {
+    wchar_t buf[MAX_PATH];
+    DWORD len = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH - 50) return false;
+    wchar_t *sep = wcsrchr(buf, L'\\');
+    if (sep == nullptr) return false;
+    wcscpy(sep + 1, L"LibreHardwareMonitor\\lhm-temp.exe");
+    if (GetFileAttributesW(buf) == INVALID_FILE_ATTRIBUTES) return false;
+    wchar_t wd[MAX_PATH];
+    wcscpy(wd, buf);
+    sep = wcsrchr(wd, L'\\');
+    if (sep) *sep = L'\0';
+    STARTUPINFOW si = {sizeof(si), 0};
+    PROCESS_INFORMATION pi = {};
+    BOOL ok = CreateProcessW(buf, nullptr, nullptr, nullptr, FALSE,
+                             CREATE_NO_WINDOW, nullptr, wd, &si, &pi);
+    if (ok) { CloseHandle(pi.hProcess); CloseHandle(pi.hThread); }
+    return ok != FALSE;
+  }
+
+  /* Fire the helper with a 5-second cooldown. */
   void trigger_helper() {
     static ULONGLONG last_trigger = 0;
     ULONGLONG now = GetTickCount64();
-    if (now - last_trigger < 5000) { return; }
+    if (now - last_trigger < 5000) return;
     last_trigger = now;
-
-    STARTUPINFOW si = {sizeof(si)};
-    PROCESS_INFORMATION pi = {};
-    CreateProcessW(nullptr, const_cast<wchar_t *>(
-        L"schtasks.exe /RUN /TN \"ConkyTempHelper\""),
-        nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-    if (pi.hProcess != nullptr) {
-      CloseHandle(pi.hProcess);
-      CloseHandle(pi.hThread);
-    }
+    launch_lhm_direct();
   }
 
   /* Run through the fallback chain: MSAcpi, then LHM WMI, then helper. */
@@ -598,16 +608,32 @@ bool get_acpi_temperature_init() {
 }
 
 double get_acpi_temperature(int fd) {
-  static bool initialized = false;
   static bool init_ok = false;
+  static bool init_done = false;
 
-  if (!initialized) {
+  /* Try init on first call.  If it fails (WMI not ready after boot),
+   * keep retrying each call — don't cache failure. */
+  if (!init_done) {
     init_ok = get_acpi_temperature_init();
-    initialized = true;
+    init_done = init_ok;  // only mark done on success
   }
-  if (!init_ok) { return -1.0; }
-  return wmi_cpu_temp.query();
+
+  /* If init previously succeeded, try query first.  If it returns -1
+   * (helper data not ready yet), try re-triggering the helper and
+   * return -1 — next cycle will pick up fresh data. */
+  if (init_ok) {
+    double t = wmi_cpu_temp.query();
+    if (t >= 0) return t;
+    wmi_cpu_temp.trigger_helper();
+    return -1.0;
+  }
+
+  return -1.0;
 }
+
+/* Public helper trigger for use from gpu.cc and other modules.
+ * Ensures lhm-temp.exe is running to write temp.dat and gpu.dat. */
+void trigger_lhm_helper() { wmi_cpu_temp.trigger_helper(); }
 
 /* ---- Battery stats via GetSystemPowerStatus ---- */
 

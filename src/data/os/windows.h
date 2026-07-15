@@ -38,4 +38,7 @@ int get_entropy_poolsize(unsigned int *);
 
 bool is_conky_already_running(void);
 
+/* Launch lhm-temp.exe if it's not running (GPU/CPU sensor helper) */
+void trigger_lhm_helper(void);
+
 #endif /* WINDOWS_H_ */
