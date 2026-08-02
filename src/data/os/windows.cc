@@ -548,35 +548,74 @@ static struct WmiCpuTemp {
     return t;
   }
 
-  /* Launch lhm-temp.exe directly by finding it relative to conky's path.
-   * Returns true if the process was successfully started. */
-  bool launch_lhm_direct() {
-    wchar_t buf[MAX_PATH];
-    DWORD len = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH - 50) return false;
-    wchar_t *sep = wcsrchr(buf, L'\\');
-    if (sep == nullptr) return false;
-    wcscpy(sep + 1, L"LibreHardwareMonitor\\lhm-temp.exe");
-    if (GetFileAttributesW(buf) == INVALID_FILE_ATTRIBUTES) return false;
-    wchar_t wd[MAX_PATH];
-    wcscpy(wd, buf);
-    sep = wcsrchr(wd, L'\\');
-    if (sep) *sep = L'\0';
+  /* Run `schtasks /RUN /TN "ConkyTempHelper"` directly (no cmd.exe wrapper).
+   * Returns true if the task exists and the run was accepted. Also returns
+   * true when the task is already running — schtasks uses the default
+   * IgnoreNew MultipleInstances policy, so no duplicate helper is spawned. */
+  static bool run_schtasks_restart() {
+    wchar_t args[] = L"schtasks.exe /RUN /TN \"ConkyTempHelper\"";
+    HANDLE hNul = CreateFileW(L"NUL", GENERIC_WRITE,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                              OPEN_EXISTING, 0, nullptr);
     STARTUPINFOW si = {sizeof(si), 0};
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = hNul != INVALID_HANDLE_VALUE ? hNul : nullptr;
+    si.hStdError = hNul != INVALID_HANDLE_VALUE ? hNul : nullptr;
     PROCESS_INFORMATION pi = {};
-    BOOL ok = CreateProcessW(buf, nullptr, nullptr, nullptr, FALSE,
-                             CREATE_NO_WINDOW, nullptr, wd, &si, &pi);
-    if (ok) { CloseHandle(pi.hProcess); CloseHandle(pi.hThread); }
-    return ok != FALSE;
+    BOOL ok = CreateProcessW(nullptr, args, nullptr, nullptr, FALSE,
+                             CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    if (hNul != INVALID_HANDLE_VALUE) { CloseHandle(hNul); }
+    if (!ok) { return false; }
+    DWORD wait = WaitForSingleObject(pi.hProcess, 5000);
+    DWORD exit = 0;
+    if (wait == WAIT_OBJECT_0) { GetExitCodeProcess(pi.hProcess, &exit); }
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return wait == WAIT_OBJECT_0 && exit == 0;
   }
 
-  /* Fire the helper with a 5-second cooldown. */
+  /* Restart the lhm-temp helper via the "ConkyTempHelper" scheduled task.
+   *
+   * Previous code tried to spawn lhm-temp.exe directly via CreateProcessW
+   * and kill zombies via OpenProcess(PROCESS_TERMINATE).  This failed
+   * because the scheduled task runs lhm-temp.exe with /RL HIGHEST (SYSTEM),
+   * and a normal-user conky process cannot terminate SYSTEM processes —
+   * OpenProcess silently returns NULL.  The spawn then created yet another
+   * lhm-temp.exe as a normal user, and the cycle repeated, piling up
+   * thousands of zombie processes that ate RAM and handles.
+   *
+   * The fix: use `schtasks /RUN` to restart the pre-existing scheduled
+   * task.  schtasks /RUN works from non-elevated processes for tasks
+   * created with /RL HIGHEST, and never spawns a duplicate of a running
+   * helper (IgnoreNew policy).
+   *
+   * If the scheduled task is missing we do NOT spawn lhm-temp.exe directly:
+   * a non-elevated conky cannot run it with the SYSTEM privileges it needs,
+   * so direct spawns only pile up useless processes.  We back off and retry
+   * the task later. */
   void trigger_helper() {
     static ULONGLONG last_trigger = 0;
+    static int fail_count = 0;
     ULONGLONG now = GetTickCount64();
-    if (now - last_trigger < 5000) return;
+
+    /* Back off on repeated failures: 5s, 10s, 20s, ... up to ~5 min. */
+    ULONGLONG delay_ms = 5000ULL << std::min(fail_count, 6);
+    if (now - last_trigger < delay_ms) { return; }
     last_trigger = now;
-    launch_lhm_direct();
+
+    if (run_schtasks_restart()) {
+      fail_count = 0;
+      return;
+    }
+
+    if (fail_count == 0) {
+      LOG_WARNING(
+          "ConkyTempHelper scheduled task not found — cannot auto-restart the "
+          "temperature helper. Install Conky via the installer, or create it "
+          "with: schtasks /Create /SC ONLOGON /TN \"ConkyTempHelper\" /TR "
+          "\"<path to lhm-temp.exe>\" /RL HIGHEST /F");
+    }
+    ++fail_count;
   }
 
   /* Run through the fallback chain: MSAcpi, then LHM WMI, then helper. */
