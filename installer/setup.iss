@@ -129,10 +129,18 @@ begin
   end;
 
   // Create ONLOGON scheduled task so helper auto-starts at next login.
+  //
+  // The /TR value must wrap the executable path in its OWN internal
+  // quotes (\"...\") in addition to the outer quotes schtasks.exe wants.
+  // Without the inner quotes, schtasks.exe's Command/Arguments splitter
+  // breaks the path at the first space (e.g. "C:\Program Files\...")
+  // into Command="C:\Program" + Arguments="Files\...\lhm-temp.exe",
+  // which fails at run time with ERROR_FILE_NOT_FOUND (0x80070002) and
+  // silently prevents gpu.dat / temp.dat from ever being written.
   try
     Exec('schtasks.exe',
-         '/CREATE /SC ONLOGON /TN "ConkyTempHelper" /TR "' + HelperPath +
-         '" /RL HIGHEST /F',
+         '/CREATE /SC ONLOGON /TN "ConkyTempHelper" /TR "\"' + HelperPath +
+         '\"" /RL HIGHEST /F',
          '', SW_HIDE, ewWaitUntilTerminated, R);
   except
   end;

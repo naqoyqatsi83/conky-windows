@@ -53,6 +53,18 @@
   a post-draw loop must force alpha=255 on all pixels
 - `BI_BITFIELDS` RGBa format is NOT supported by GDI — use `BI_RGB` with
   byte-order B,G,R,A and manual alpha fix
+- `installer/lhm-temp/lhm-temp.exe` is a **build artifact, gitignored, never
+  committed** (only `lhm-temp.cs` is tracked). If it's sitting stale in the
+  working tree from an old local compile, `setup.iss` bundles it as-is without
+  checking freshness — always run the README's "Compile temperature helper"
+  step (csc.exe against the current `LibreHardwareMonitorLib.dll`) before
+  building the installer, especially after `download_lhm.cmd` updates the LHM
+  version. A stale build was found 2026-09-15 causing `${gputemp}`/`${gpuutil}`
+  etc. to silently show N/A forever (CPU temp via WMI kept working — only the
+  LHM-sourced GPU sensor path was affected) while a fresh recompile of the
+  *identical, unchanged* `lhm-temp.cs` worked immediately. Exact root cause
+  in the old binary wasn't isolated (likely built against a slightly
+  different LHM dll at some earlier point); recompiling was the fix.
 
 ## Debugging History (2026-07-09)
 
