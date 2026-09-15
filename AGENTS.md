@@ -1,5 +1,27 @@
 # Conky — Windows Port (MinGW)
 
+## Workflow
+
+This repo follows a standing process — apply it without being asked:
+
+- **All work happens on `develop`.** `main` is release-only: it only ever
+  moves via merging `develop` in at tag time. Never commit directly to
+  `main`. (Branch is named `develop`, not `dev` — `dev` collides with
+  existing `dev/*` branch refs inherited from the upstream fork.)
+- **Every real fix or feature gets a GitHub issue**, opened before or
+  alongside the work, closed with a comment naming the resolving commit
+  and how it was verified once merged. If something real got fixed
+  without one (it happens), backfill the issue and close it immediately
+  rather than let it go undocumented — see issues #28/#29 for the
+  pattern.
+- **`CHANGELOG.md` tracks everything under `[Unreleased]`** as it lands
+  on `develop`, one bullet per issue, linked. When a version is tagged,
+  that section becomes the version's heading.
+- **Tags are real releases, not checkpoints.** An RC tag (`vX.Y.Z-rc.N`)
+  can be cut directly on `develop` for pre-release testing without
+  touching `main`. A non-RC tag means: merge `develop` into `main` first,
+  tag `main` at that merge commit, then push both the branch and the tag.
+
 ## Project Nature
 
 This is a **Windows port of Conky** (system monitor) using **MinGW (TDM-GCC-64
