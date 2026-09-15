@@ -243,18 +243,28 @@ def extract_conky_config(source: str) -> str | None:
 
 
 def lint_config_section(source: str) -> list[Finding]:
-    config_text = extract_conky_config(source)
-    if config_text is None:
-        return []
     findings = []
-    config_start = source.index(config_text)
-    # Value is either a quoted string (which may itself contain commas, e.g.
-    # own_window_hints = 'undecorated,skip_taskbar,...') or a bare
-    # comma-terminated token (numbers, true/false, identifiers).
-    value_pattern = r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|[^,\n]+"
-    for m in re.finditer(
-        rf"^\s*(\w+)\s*=\s*({value_pattern}),?\s*$", config_text, re.MULTILINE
-    ):
+
+    if is_old_style(source):
+        # Old format: one `key value` setting per line, value is the rest
+        # of the line (no quotes, no comma terminator), up to the bare
+        # `TEXT` marker.
+        text_start = re.search(r"^TEXT\s*$", source, re.MULTILINE)
+        config_text = source[: text_start.start()] if text_start else source
+        config_start = 0
+        pattern = re.compile(r"^\s*(\w+)\s+(.+?)\s*$", re.MULTILINE)
+    else:
+        config_text = extract_conky_config(source)
+        if config_text is None:
+            return []
+        config_start = source.index(config_text)
+        # Value is either a quoted string (which may itself contain commas,
+        # e.g. own_window_hints = 'undecorated,skip_taskbar,...') or a bare
+        # comma-terminated token (numbers, true/false, identifiers).
+        value_pattern = r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|[^,\n]+"
+        pattern = re.compile(rf"^\s*(\w+)\s*=\s*({value_pattern}),?\s*$", re.MULTILINE)
+
+    for m in pattern.finditer(config_text):
         key, value = m.group(1), m.group(2).strip()
         checker = CONFIG_SETTINGS.get(key)
         if checker is None:
@@ -263,7 +273,7 @@ def lint_config_section(source: str) -> list[Finding]:
         if message is None:
             continue
         line_no = source[: config_start + m.start()].count("\n") + 1
-        findings.append(Finding(line_no, f"{key} = {value}", "CONFIG", message))
+        findings.append(Finding(line_no, f"{key} {value}", "CONFIG", message))
     return findings
 
 
@@ -283,12 +293,32 @@ class Report:
 
 
 def extract_conky_text(source: str) -> tuple[str, int] | None:
-    """Return (text_block, start_line_offset) for the conky.text = [[ ]] block."""
+    """Return (text_block, start_line_offset) for the template text.
+
+    Handles both the modern Lua format (`conky.text = [[ ... ]]`) and the
+    old, pre-1.10 format (a bare `TEXT` line, then everything to EOF is the
+    template -- no closing marker). BUILD_OLD_CONFIG is on by default in
+    this port (cmake/ConkyBuildOptions.cmake) and this port's conky.exe
+    loads old-format files directly, so they're a real backport target, not
+    just something to reject. See conky-windows issue #7.
+    """
     m = re.search(r"conky\.text\s*=\s*\[\[(.*)\]\]", source, re.DOTALL)
-    if not m:
-        return None
-    start_line = source[: m.start(1)].count("\n") + 1
-    return m.group(1), start_line
+    if m:
+        start_line = source[: m.start(1)].count("\n") + 1
+        return m.group(1), start_line
+
+    m = re.search(r"^TEXT\s*$", source, re.MULTILINE)
+    if m:
+        start_line = source[: m.end()].count("\n") + 1
+        return source[m.end() :], start_line
+
+    return None
+
+
+def is_old_style(source: str) -> bool:
+    return not re.search(r"conky\.text\s*=\s*\[\[", source) and bool(
+        re.search(r"^TEXT\s*$", source, re.MULTILINE)
+    )
 
 
 def scan_objects(text: str):
