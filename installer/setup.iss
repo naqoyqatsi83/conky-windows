@@ -123,6 +123,8 @@ var
   HelperPath: string;
   HelperDir: string;
   ExceptionMsg: string;
+  XmlPath: string;
+  Xml: AnsiString;
 begin
   HelperPath := ExpandConstant('{app}\LibreHardwareMonitor\lhm-temp.exe');
   HelperDir := ExpandConstant('{app}\LibreHardwareMonitor');
@@ -143,23 +145,63 @@ begin
     Log('SetupTempHelper: ShellExec raised exception: ' + ExceptionMsg);
   end;
 
-  // Create ONLOGON scheduled task so helper auto-starts at next login.
+  // Create ONLOGON scheduled task so helper auto-starts at next login, via
+  // an explicit XML task definition rather than schtasks' /TR string
+  // parameter.
   //
-  // The /TR value must wrap the executable path in its OWN internal
-  // quotes (\"...\") in addition to the outer quotes schtasks.exe wants.
-  // Without the inner quotes, schtasks.exe's Command/Arguments splitter
-  // breaks the path at the first space (e.g. "C:\Program Files\...")
-  // into Command="C:\Program" + Arguments="Files\...\lhm-temp.exe",
-  // which fails at run time with ERROR_FILE_NOT_FOUND (0x80070002) and
-  // silently prevents gpu.dat / temp.dat from ever being written.
+  // History (both confirmed empirically via a real installer run, not just
+  // reasoning about it):
+  //   1. A single layer of quotes around a path with spaces
+  //      ('/TR "' + HelperPath + '"') gets split by schtasks' own
+  //      Command/Arguments heuristic at the first bare space --
+  //      Command="C:\Program", Arguments="Files\...\lhm-temp.exe" --
+  //      failing at run time with ERROR_FILE_NOT_FOUND (0x80070002).
+  //   2. The "fix" for that (wrapping in backslash-escaped inner quotes,
+  //      '/TR "\"' + HelperPath + '\""') does NOT work the way the C/
+  //      PowerShell backslash-escaping convention would suggest --
+  //      Pascal Script string literals don't interpret \" as an escape
+  //      sequence at all, so '\"' is literally the two characters
+  //      backslash+quote, not an escaped quote. The resulting raw command
+  //      line does parse into a single /TR argument via the standard
+  //      Win32 argv rules, but schtasks then stores the literal embedded
+  //      quote characters as PART of the Command value instead of
+  //      stripping them: <Command>"C:\Program Files\...\lhm-temp.exe"</Command>
+  //      (quotes included), which also isn't a valid, existing file path.
+  // The XML path sidesteps schtasks' /TR parsing entirely: Command and
+  // Arguments are separate, unambiguous XML elements.
   try
-    if Exec('schtasks.exe',
-         '/CREATE /SC ONLOGON /TN "ConkyTempHelper" /TR "\"' + HelperPath +
-         '\"" /RL HIGHEST /F',
+    XmlPath := ExpandConstant('{tmp}\ConkyTempHelperTask.xml');
+    { No explicit encoding attribute: SaveStringToFile writes ANSI bytes
+      (confirmed by testing -- declaring encoding="UTF-8" over ANSI/ASCII
+      bytes made schtasks reject the file as malformed XML, "unable to
+      switch the encoding", even though the content is pure ASCII and
+      technically valid UTF-8 too). Omitting the attribute lets the parser
+      use its default, which accepts this fine. }
+    Xml := '<?xml version="1.0"?>' + #13#10 +
+      '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' + #13#10 +
+      '  <Triggers><LogonTrigger /></Triggers>' + #13#10 +
+      '  <Principals>' + #13#10 +
+      '    <Principal id="Author">' + #13#10 +
+      '      <LogonType>InteractiveToken</LogonType>' + #13#10 +
+      '      <RunLevel>HighestAvailable</RunLevel>' + #13#10 +
+      '    </Principal>' + #13#10 +
+      '  </Principals>' + #13#10 +
+      '  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings>' + #13#10 +
+      '  <Actions Context="Author">' + #13#10 +
+      '    <Exec>' + #13#10 +
+      '      <Command>' + HelperPath + '</Command>' + #13#10 +
+      '    </Exec>' + #13#10 +
+      '  </Actions>' + #13#10 +
+      '</Task>';
+    if not SaveStringToFile(XmlPath, Xml, False) then
+      Log('SetupTempHelper: failed to write task XML to ' + XmlPath)
+    else if Exec('schtasks.exe',
+         '/CREATE /TN "ConkyTempHelper" /XML "' + XmlPath + '" /F',
          '', SW_HIDE, ewWaitUntilTerminated, R) then
-      Log('SetupTempHelper: schtasks /CREATE exit code=' + IntToStr(R))
+      Log('SetupTempHelper: schtasks /CREATE (XML) exit code=' + IntToStr(R))
     else
       Log('SetupTempHelper: Exec() itself failed to launch schtasks.exe, R=' + IntToStr(R));
+    DeleteFile(XmlPath);
   except
     ExceptionMsg := GetExceptionMessage;
     Log('SetupTempHelper: schtasks /CREATE raised exception: ' + ExceptionMsg);
