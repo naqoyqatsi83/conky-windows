@@ -80,8 +80,23 @@ int update_uptime() {
 }
 
 int check_mount(struct text_object *obj) {
-  (void)obj;
-  return 0;
+  if (obj == nullptr || obj->data.s == nullptr || obj->data.s[0] == '\0') {
+    return 0;
+  }
+
+  std::string path = obj->data.s;
+  /* A bare drive letter ("D:" or "D") needs a trailing backslash --
+   * GetFileAttributes on "D:" alone reports on the current directory of
+   * that drive rather than the volume itself, which can exist (or not)
+   * independently of whether the drive is actually mounted. */
+  if (path.size() <= 2 && (path.size() == 1 || path[1] == ':')) {
+    if (path.size() == 1) { path += ':'; }
+    path += '\\';
+  }
+
+  DWORD attrs = GetFileAttributesA(path.c_str());
+  return attrs != INVALID_FILE_ATTRIBUTES &&
+         (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
 
 int update_meminfo() {
@@ -202,6 +217,44 @@ int update_net_stats() {
   }
 
   return 0;
+}
+
+/* ---- Process-by-name lookup for if_running (see common.cc) ---- */
+
+bool win_process_by_name_running(const char *name) {
+  if (name == nullptr || name[0] == '\0') { return false; }
+
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap == INVALID_HANDLE_VALUE) { return false; }
+
+  std::string want = name;
+  bool want_has_exe = want.size() > 4 &&
+                      _stricmp(want.c_str() + want.size() - 4, ".exe") == 0;
+
+  PROCESSENTRY32 pe = {};
+  pe.dwSize = sizeof(PROCESSENTRY32);
+  bool found = false;
+
+  if (Process32First(snap, &pe)) {
+    do {
+      std::string have = pe.szExeFile;
+      /* Linux theme authors write process names without an extension
+       * (e.g. "firefox"); Windows process names always end in ".exe".
+       * Compare without the extension unless the theme's own argument
+       * already included one. */
+      if (!want_has_exe && have.size() > 4 &&
+          _stricmp(have.c_str() + have.size() - 4, ".exe") == 0) {
+        have.resize(have.size() - 4);
+      }
+      if (_stricmp(have.c_str(), want.c_str()) == 0) {
+        found = true;
+        break;
+      }
+    } while (Process32Next(snap, &pe));
+  }
+
+  CloseHandle(snap);
+  return found;
 }
 
 /* ---- Process counts via Toolhelp API ---- */
@@ -1012,15 +1065,77 @@ void get_top_info(void) {
   }
 }
 
-/* ---- Gateway info (return empty) ---- */
+/* ---- Gateway info via GetBestInterface + GetAdaptersAddresses ---- */
 
-int update_gateway_info(void) { return 1; }
+namespace {
+struct gateway_info_state {
+  bool valid = false;
+  char iface[256] = {0};
+  char ip[64] = {0};
+};
+gateway_info_state g_gateway_info;
+}  // namespace
+
+int update_gateway_info(void) {
+  g_gateway_info.valid = false;
+
+  /* GetBestInterface(0, ...) finds the interface used to reach 0.0.0.0 --
+   * i.e. the default route's interface, the same thing /proc/net/route's
+   * "destination 0" entry identifies on Linux. */
+  DWORD best_if = 0;
+  if (GetBestInterface(0, &best_if) != NO_ERROR) { return 1; }
+
+  ULONG bufLen = 0;
+  GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_GATEWAYS, nullptr, nullptr,
+                       &bufLen);
+  if (bufLen == 0) { return 1; }
+
+  std::vector<char> buf(bufLen);
+  auto *paa = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buf.data());
+  if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_GATEWAYS, nullptr, paa,
+                           &bufLen) != NO_ERROR) {
+    return 1;
+  }
+
+  for (PIP_ADAPTER_ADDRESSES p = paa; p != nullptr; p = p->Next) {
+    if (p->IfIndex != best_if) { continue; }
+
+    WideCharToMultiByte(CP_UTF8, 0, p->FriendlyName, -1, g_gateway_info.iface,
+                        sizeof(g_gateway_info.iface) - 1, nullptr, nullptr);
+
+    if (p->FirstGatewayAddress != nullptr) {
+      auto *sin = reinterpret_cast<sockaddr_in *>(
+          p->FirstGatewayAddress->Address.lpSockaddr);
+      snprintf(g_gateway_info.ip, sizeof(g_gateway_info.ip), "%s",
+               inet_ntoa(sin->sin_addr));
+    }
+
+    g_gateway_info.valid = g_gateway_info.iface[0] != '\0';
+    break;
+  }
+
+  return 0;
+}
+
+/* update_gateway_info2/print_gateway_iface2 back ${iface}, which lists
+ * *every* routed interface, not just the default gateway's -- left
+ * unimplemented for now (${gw_iface}/${gw_ip}/${if_gw} above cover the
+ * common case); returning "no data" rather than a wrong/partial list. */
 int update_gateway_info2(void) { return 1; }
-void free_gateway_info(struct text_object *) {}
-int gateway_exists(struct text_object *) { return 0; }
-void print_gateway_iface(struct text_object *, char *, unsigned int) {}
 void print_gateway_iface2(struct text_object *, char *, unsigned int) {}
-void print_gateway_ip(struct text_object *, char *, unsigned int) {}
+
+void free_gateway_info(struct text_object *) { g_gateway_info.valid = false; }
+
+int gateway_exists(struct text_object *) { return g_gateway_info.valid ? 1 : 0; }
+
+void print_gateway_iface(struct text_object *, char *p,
+                         unsigned int p_max_size) {
+  snprintf(p, p_max_size, "%s", g_gateway_info.valid ? g_gateway_info.iface : "");
+}
+
+void print_gateway_ip(struct text_object *, char *p, unsigned int p_max_size) {
+  snprintf(p, p_max_size, "%s", g_gateway_info.valid ? g_gateway_info.ip : "");
+}
 
 /* ---- Entropy (no equivalent on Windows) ---- */
 

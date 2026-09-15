@@ -756,7 +756,18 @@ int if_existing_iftest(struct text_object *obj) {
 }
 
 int if_running_iftest(struct text_object *obj) {
+#ifdef _WIN32
+  /* is_process_running() (src/data/top.cc) only ever finds a match if
+   * something already populated the shared process list it reads from --
+   * on Linux that's update_top()'s /proc walk. This port doesn't
+   * implement the top/top_mem/etc. subsystem for Windows (see
+   * conky-windows issue tracker), so that list is always empty here.
+   * win_process_by_name_running() (src/data/os/windows.cc) does its own
+   * lightweight Toolhelp32 walk instead, independent of that subsystem. */
+  if (!win_process_by_name_running(obj->data.s)) { return 0; }
+#else
   if (!is_process_running(obj->data.s)) { return 0; }
+#endif /* _WIN32 */
   return 1;
 }
 

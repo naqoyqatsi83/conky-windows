@@ -1157,14 +1157,15 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
   obj->callbacks.print = &print_sip_status;
   obj->callbacks.free = &gen_free_opaque;
 #else
-  END OBJ_IF_ARG(if_running, 0, "if_running needs an argument")
-
-      char buf[DEFAULT_TEXT_BUFFER_SIZE];
-
-  snprintf(buf, DEFAULT_TEXT_BUFFER_SIZE, "pidof %s >/dev/null", arg);
-  obj->data.s = STRNDUP_ARG;
-  /* XXX: maybe use a different callback here */
+  END OBJ_IF_ARG(if_running, 0, "if_running needs an argument") obj->data.s =
+      STRNDUP_ARG;
   obj->callbacks.iftest = &if_running_iftest;
+#ifdef _WIN32
+  END OBJ_IF_ARG(if_mounted, 0, "if_mounted needs an argument") obj->data.s =
+      STRNDUP_ARG;
+  obj->callbacks.iftest = &check_mount;
+  obj->callbacks.free = &gen_free_opaque;
+#endif /* _WIN32 */
 #endif
   END OBJ(kernel, nullptr) obj->callbacks.print = &print_kernel;
   END OBJ(machine, nullptr) obj->callbacks.print = &print_machine;
@@ -1593,6 +1594,20 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
   obj->callbacks.print = &print_gateway_iface2;
   obj->callbacks.free = &gen_free_opaque;
 #endif /* __linux__ */
+#ifdef _WIN32
+  END OBJ(gw_iface, &update_gateway_info) obj->callbacks.print =
+      &print_gateway_iface;
+  obj->callbacks.free = &free_gateway_info;
+  END OBJ_IF(if_gw, &update_gateway_info) obj->callbacks.iftest =
+      &gateway_exists;
+  obj->callbacks.free = &free_gateway_info;
+  END OBJ(gw_ip, &update_gateway_info) obj->callbacks.print = &print_gateway_ip;
+  obj->callbacks.free = &free_gateway_info;
+  /* ${iface} (lists every routed interface, not just the default gateway's)
+   * isn't implemented on Windows yet -- see
+   * update_gateway_info2()/print_gateway_iface2() in
+   * src/data/os/windows.cc. */
+#endif /* _WIN32 */
 #if (defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || \
      defined(__DragonFly__) || defined(__OpenBSD__)) &&     \
     (defined(i386) || defined(__i386__))

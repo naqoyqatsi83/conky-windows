@@ -47,6 +47,13 @@ void print_to_bytes(struct text_object *, char *, unsigned int);
 
 void strfold(char *start, int count);
 int check_mount(struct text_object *);
+#ifdef _WIN32
+int update_gateway_info(void);
+void free_gateway_info(struct text_object *obj);
+int gateway_exists(struct text_object *);
+void print_gateway_iface(struct text_object *, char *, unsigned int);
+void print_gateway_ip(struct text_object *, char *, unsigned int);
+#endif /* _WIN32 */
 void prepare_update(void);
 int update_uptime(void);
 int update_meminfo(void);
@@ -177,6 +184,9 @@ void print_evaluate(struct text_object *, char *, unsigned int);
 int if_empty_iftest(struct text_object *);
 int if_existing_iftest(struct text_object *);
 int if_running_iftest(struct text_object *);
+#ifdef _WIN32
+bool win_process_by_name_running(const char *name);
+#endif /* _WIN32 */
 
 #ifndef __OpenBSD__
 void print_acpitemp(struct text_object *, char *, unsigned int);
