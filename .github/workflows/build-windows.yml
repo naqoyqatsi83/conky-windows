@@ -101,6 +101,24 @@ jobs:
           bundle_dlls build/src conky.exe
           bundle_dlls build/tests test-conky.exe
 
+          # Real Cairo (vendored, see 3rdparty/cairo) isn't a MinGW runtime
+          # DLL so bundle_dlls' objdump-based dependency walk never finds
+          # it -- conky.exe doesn't even link it (src/output/
+          # cairo_dynamic.cc resolves it via LoadLibraryA at runtime, see
+          # conky-windows issue #10), so there's no import to discover.
+          # Needed next to conky.exe for its Lua-draw-hook support to work
+          # at all; harmless if a theme never uses it.
+          cp 3rdparty/cairo/lib/cairo.dll build/src/
+
+          # The Lua-loadable "cairo" module (require('cairo'), built from
+          # lua/cairo.pkg) goes in lua_modules/ next to conky.exe --
+          # src/lua/llua.cc's package.cpath setup looks for it there at
+          # runtime. Kept separate from the real cairo.dll above so the two
+          # same-named-but-different DLLs (the C library vs. the Lua module)
+          # can't collide -- see conky-windows issue #10.
+          mkdir -p build/src/lua_modules
+          cp build/lua/libcairo.dll build/src/lua_modules/
+
           echo "=== Files in build/src ==="
           ls -la build/src/
 

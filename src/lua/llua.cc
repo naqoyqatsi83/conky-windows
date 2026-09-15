@@ -28,6 +28,9 @@
 #if defined(BUILD_LUA_CAIRO) || defined(BUILD_WAYLAND)
 #include <cairo.h>
 #endif
+#if defined(BUILD_WINDOWS)
+#include "../output/cairo_dynamic.hh"
+#endif
 
 #include "../conky.h"
 #include "../geometry.h"
@@ -194,8 +197,65 @@ static int llua_conky_surface(lua_State *L) {
   return 1;
 }
 
+#if defined(BUILD_WINDOWS)
+// Compat shim: themes written against X11 conky commonly call
+// cairo_xlib_surface_create(conky_window.display, conky_window.drawable,
+// conky_window.visual, w, h) directly from a Lua draw hook rather than the
+// portable conky_surface(). conky_window.display/drawable/visual are never
+// set on Windows (see llua_update_window_table() below -- they're X11-only),
+// so those arguments are nil here; this ignores all 5 arguments positionally
+// and just returns the same surface conky_surface() would, so such themes
+// run unmodified. See conky-windows issue #10. Registered as a plain global
+// (not a require()'d module) since themes like altinukshini/conky_blue's
+// clock_rings.lua call it directly after only `require 'cairo'`.
+static int llua_cairo_xlib_surface_create_compat(lua_State *L) {
+  static bool warned = false;
+  if (!warned) {
+    warned = true;
+    fprintf(stderr,
+            "conky: cairo_xlib_surface_create() called on Windows -- "
+            "redirected to conky_surface() (X11 display/drawable/visual "
+            "arguments ignored). Use conky_surface() directly for new "
+            "scripts.\n");
+  }
+  return llua_conky_surface(L);
+}
+#endif /* BUILD_WINDOWS */
+
 void llua_init() {
+#if defined(BUILD_WINDOWS)
+  // Lua's require() looks for lib?.dll on this MinGW toolchain (CMake's
+  // MODULE targets here keep the "lib" prefix even on Windows -- confirmed
+  // empirically: lua/CMakeLists.txt's conky-cairo, OUTPUT_NAME "cairo",
+  // actually builds as libcairo.dll, not cairo.dll -- but Lua's own loader
+  // still expects the Windows ".dll" extension, not Unix's ".so"). Before
+  // this fix, no Lua C extension module (cairo, imlib2, rsvg, ...) could
+  // ever be found by require() on this port, independent of any particular
+  // module.
+  //
+  // PACKAGE_LIBDIR (used on every other platform) is an *absolute path
+  // baked in at compile time* from the build machine's CMAKE_INSTALL_PREFIX
+  // -- meaningless here, since this port ships as a relocatable Inno Setup
+  // installer to a user-chosen {app} directory that has no relationship to
+  // whatever prefix CI happened to configure with. Resolve the running
+  // conky.exe's own directory at runtime instead, and look for Lua modules
+  // in a lua_modules subdirectory next to it (installer/CI place the built
+  // module there; see conky-windows issue #10) -- kept out of conky.exe's
+  // own directory so the Lua-loadable cairo.dll module (found via this
+  // cpath) can't be confused with the real vendored cairo.dll library
+  // (found via the OS's normal DLL search order for LoadLibraryA, see
+  // cairo_dynamic.cc) even though both happen to be named "cairo.dll".
+  char exe_path[MAX_PATH];
+  DWORD len = GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
+  std::string libs;
+  if (len > 0 && len < MAX_PATH) {
+    std::string exe_dir =
+        std::filesystem::path(exe_path).parent_path().string();
+    libs = exe_dir + "/lua_modules/lib?.dll;";
+  }
+#else
   std::string libs(PACKAGE_LIBDIR "/lib?.so;");
+#endif
   std::string old_path, new_path;
   if (lua_L != nullptr) { return; }
   lua_L = luaL_newstate();
@@ -267,6 +327,11 @@ void llua_init() {
 
   lua_pushcfunction(lua_L, &llua_conky_surface);
   lua_setglobal(lua_L, "conky_surface");
+
+#if defined(BUILD_WINDOWS)
+  lua_pushcfunction(lua_L, &llua_cairo_xlib_surface_create_compat);
+  lua_setglobal(lua_L, "cairo_xlib_surface_create");
+#endif /* BUILD_WINDOWS */
 
   /* register tolua++ user types */
   tolua_open(lua_L);
@@ -725,7 +790,19 @@ void llua_update_window_table(conky::vec2i window_size,
 
   /* Determine device scale from the drawing surface. */
   double scale_x = 1.0, scale_y = 1.0;
-#if defined(BUILD_LUA_CAIRO) || defined(BUILD_WAYLAND)
+#if defined(BUILD_WINDOWS)
+  // conky.exe doesn't link cairo directly on Windows (see
+  // cairo_dynamic.hh) -- resolve this call dynamically too.
+  auto *output = display_output();
+  if (output) {
+    auto weak = output->drawing_surface();
+    auto surface = weak.lock();
+    if (surface) {
+      conky::cairo_dyn::surface_get_device_scale(surface.get(), &scale_x,
+                                                  &scale_y);
+    }
+  }
+#elif defined(BUILD_LUA_CAIRO) || defined(BUILD_WAYLAND)
   auto *output = display_output();
   if (output) {
     auto weak = output->drawing_surface();

@@ -745,18 +745,41 @@ include_directories(3rdparty/toluapp/include)
 
 # Check for libraries used by Lua bindings
 if(BUILD_LUA_CAIRO)
-  pkg_check_modules(CAIRO REQUIRED cairo>=1.14)
-  set(luacairo_libs ${CAIRO_LINK_LIBRARIES} ${LUA_LIBRARIES})
-  set(luacairo_includes ${CAIRO_INCLUDE_DIRS} ${LUA_INCLUDE_DIR})
+  if(OS_WINDOWS)
+    # No pkg-config on this MinGW toolchain -- Cairo is vendored instead
+    # (see 3rdparty/cairo). Deliberately NOT added to conky_libs/
+    # conky_includes (unlike the pkg-config path below): those flow into
+    # the main conky.exe link (see target_link_libraries(conky conky_core
+    # ${conky_libs}) in src/CMakeLists.txt), and linking Cairo there would
+    # make cairo.dll a hard PE import, preventing conky.exe from starting
+    # at all if it's ever missing -- the same mistake already fixed once
+    # for NVML (conky-windows issue #4). luacairo_libs/luacairo_includes
+    # are only consumed by lua/CMakeLists.txt's separate, opt-in
+    # conky-cairo module (require("cairo")); conky.exe's own Cairo usage
+    # (src/output/display-windows.cc) resolves symbols dynamically at
+    # runtime instead (LoadLibraryA/GetProcAddress), same pattern as NVML.
+    set(luacairo_includes "${CMAKE_SOURCE_DIR}/3rdparty/cairo/include" ${LUA_INCLUDE_DIR})
+    set(luacairo_libs "${CMAKE_SOURCE_DIR}/3rdparty/cairo/lib/libcairo.dll.a" ${LUA_LIBRARIES})
 
-  if(BUILD_LUA_CAIRO_XLIB)
-    pkg_check_modules(CAIROXLIB REQUIRED cairo-xlib)
-    set(luacairo_libs ${CAIROXLIB_LINK_LIBRARIES} ${luacairo_libs})
-    set(luacairo_includes ${CAIROXLIB_INCLUDE_DIRS} ${luacairo_includes})
-  endif(BUILD_LUA_CAIRO_XLIB)
+    # Headers only (no lib) for the main conky.exe build: src/lua/llua.cc
+    # and src/output/display-windows.cc need Cairo's *type* declarations
+    # (cairo_surface_t, HDC-surface signatures, ...) at compile time even
+    # though they resolve the actual functions dynamically at runtime.
+    set(conky_includes ${conky_includes} "${CMAKE_SOURCE_DIR}/3rdparty/cairo/include")
+  else()
+    pkg_check_modules(CAIRO REQUIRED cairo>=1.14)
+    set(luacairo_libs ${CAIRO_LINK_LIBRARIES} ${LUA_LIBRARIES})
+    set(luacairo_includes ${CAIRO_INCLUDE_DIRS} ${LUA_INCLUDE_DIR})
 
-  set(conky_libs ${conky_libs} ${luacairo_libs})
-  set(conky_includes ${conky_includes} ${luacairo_includes})
+    if(BUILD_LUA_CAIRO_XLIB)
+      pkg_check_modules(CAIROXLIB REQUIRED cairo-xlib)
+      set(luacairo_libs ${CAIROXLIB_LINK_LIBRARIES} ${luacairo_libs})
+      set(luacairo_includes ${CAIROXLIB_INCLUDE_DIRS} ${luacairo_includes})
+    endif(BUILD_LUA_CAIRO_XLIB)
+
+    set(conky_libs ${conky_libs} ${luacairo_libs})
+    set(conky_includes ${conky_includes} ${luacairo_includes})
+  endif(OS_WINDOWS)
 
   find_program(APP_PATCH patch)
 

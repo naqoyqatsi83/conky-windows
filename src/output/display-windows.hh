@@ -25,6 +25,7 @@
 
 #include <windows.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -84,7 +85,17 @@ class display_output_windows : public display_output_base {
   // main loop
   virtual bool main_loop_wait(double t);
 
+  // Lua draw hooks (lua_draw_hook_pre/post) -- see cairo_dynamic.hh for why
+  // this is a persistent ARGB32 image surface rather than one backed by
+  // mem_dc_.
+  virtual std::weak_ptr<draw_surface> drawing_surface();
+
  private:
+  std::shared_ptr<draw_surface> hook_surface_;
+  int hook_surface_w_{0}, hook_surface_h_{0};
+  void ensure_hook_surface(int w, int h);
+  void composite_hook_surface();
+
   HWND hwnd_{nullptr};
   HDC hdc_{nullptr};
   HFONT current_font_{nullptr};

@@ -29,6 +29,9 @@ src/colour-names.hh
 !3rdparty/nvml/**/lib/*.so
 !3rdparty/nvml/**/lib/*.a
 
+# Don't ignore vendored Cairo (Windows-only, see 3rdparty/cairo/CMakeLists.txt)
+!3rdparty/cairo/**/lib/*.a
+
 # Windows port: LibreHardwareMonitor DLLs (downloaded, not built)
 /installer/LibreHardwareMonitor/
 

@@ -35,6 +35,7 @@
 #include "../conky.h"
 #include "../logging.h"
 #include "../lua/fonts.h"
+#include "cairo_dynamic.hh"
 #include "display-windows.hh"
 
 #ifdef BUILD_GUI
@@ -496,6 +497,77 @@ int display_output_windows::calc_text_width(const char *s) {
   return sz.cx;
 }
 
+void display_output_windows::ensure_hook_surface(int w, int h) {
+  if (hook_surface_ && hook_surface_w_ == w && hook_surface_h_ == h) return;
+  hook_surface_.reset();
+  hook_surface_w_ = 0;
+  hook_surface_h_ = 0;
+
+  cairo_surface_t *surf = conky::cairo_dyn::image_surface_create(w, h);
+  if (surf == nullptr) return;
+
+  hook_surface_ = std::shared_ptr<draw_surface>(
+      surf, [](cairo_surface_t *s) { conky::cairo_dyn::surface_destroy(s); });
+  hook_surface_w_ = w;
+  hook_surface_h_ = h;
+}
+
+std::weak_ptr<conky::draw_surface> display_output_windows::drawing_surface() {
+  // Sized to the last-known window content dimensions. A Lua draw hook
+  // that somehow runs before the very first begin_draw_text() (win_w_/
+  // win_h_ still 0) gets an empty weak_ptr rather than a bogus-sized
+  // surface.
+  if (win_w_ > 0 && win_h_ > 0) ensure_hook_surface(win_w_, win_h_);
+  return hook_surface_;
+}
+
+// Composites the persistent Lua-draw-hook surface (see cairo_dynamic.hh for
+// why it's separate from mem_dc_) as the base layer of the current frame's
+// DIB, before any of this port's own GDI drawing runs -- so
+// lua_draw_hook_pre-drawn content ends up underneath conky's own text/bars/
+// graphs, matching conventional "pre" hook semantics. Content drawn by
+// lua_draw_hook_post (which fires after this frame's DIB has already been
+// submitted -- see conky.cc's draw_stuff()) only becomes visible on the
+// *next* frame's composite, and still layers underneath rather than on top;
+// a known, minor limitation of not restructuring the shared draw_stuff()
+// loop across all display backends just for this. altinukshini/conky_blue's
+// clock_rings.lua (the theme this was verified against) only uses
+// lua_draw_hook_pre, which composites correctly same-frame.
+void display_output_windows::composite_hook_surface() {
+  if (!hook_surface_ || mem_bits_ == nullptr) return;
+  if (hook_surface_w_ != win_w_ || hook_surface_h_ != win_h_) return;
+
+  conky::cairo_dyn::surface_flush(hook_surface_.get());
+  auto *src = conky::cairo_dyn::image_surface_get_data(hook_surface_.get());
+  int stride = conky::cairo_dyn::image_surface_get_stride(hook_surface_.get());
+  if (src == nullptr || stride <= 0) return;
+
+  // Both buffers are 32-bit premultiplied-alpha, byte order B,G,R,A in
+  // memory (cairo's CAIRO_FORMAT_ARGB32 on this little-endian target, and
+  // this port's own DIB per the comment in end_draw_text()) -- a row-wise
+  // copy is correct. mem_bits_ was just memset to transparent black, so
+  // this is establishing the base layer, not blending onto existing content.
+  auto *dst = static_cast<unsigned char *>(mem_bits_);
+  size_t dst_stride = (size_t)win_w_ * 4;
+  size_t copy_bytes = std::min(dst_stride, (size_t)stride);
+  for (int row = 0; row < win_h_; row++) {
+    memcpy(dst + (size_t)row * dst_stride, src + (size_t)row * stride,
+           copy_bytes);
+  }
+
+  /* hook_surface_ is a persistent, reused-across-frames canvas (see
+   * cairo_dynamic.hh for why it isn't recreated every frame) -- without
+   * clearing it here, next frame's Lua draw calls would alpha-composite on
+   * top of this frame's content instead of replacing it. For anything
+   * drawn with partial alpha (e.g. clock_rings.lua's semi-transparent
+   * rings/hands), that accumulates into a visible "ghost trail" of every
+   * past position instead of just showing the current one. Clearing right
+   * after compositing (rather than before the next hook runs) means
+   * whichever hook draws next always starts from a blank surface. */
+  memset(src, 0, (size_t)stride * win_h_);
+  conky::cairo_dyn::surface_mark_dirty(hook_surface_.get());
+}
+
 void display_output_windows::begin_draw_text() {
   if (hwnd_ == nullptr) return;
 
@@ -542,10 +614,17 @@ void display_output_windows::begin_draw_text() {
   /* Initialize every pixel to ARGB(0,0,0,0) — fully transparent black */
   memset(mem_bits_, 0, (size_t)win_w_ * win_h_ * 4);
 
-  /* No background fill — the DIB starts fully transparent. GDI draws text,
-   * bars, and graphs directly onto this transparent canvas. In end_draw_text,
-   * any pixel whose RGB channels are non-zero (i.e., GDI touched it) gets
-   * alpha=255; untouched pixels stay at ARGB(0,0,0,0) — fully transparent. */
+  /* Lay down any Lua draw-hook content (lua_draw_hook_pre/post) as the base
+   * layer, underneath conky's own GDI drawing below. See cairo_dynamic.hh
+   * and composite_hook_surface() for why this exists and its limitations. */
+  composite_hook_surface();
+
+  /* No background fill beyond the hook layer above — the DIB starts (or is
+   * left) transparent everywhere the hook layer didn't draw. GDI draws
+   * text, bars, and graphs directly onto this canvas. In end_draw_text, any
+   * pixel whose RGB channels are non-zero and whose alpha is still 0 (i.e.,
+   * GDI touched it but the hook layer didn't already set a real alpha)
+   * gets alpha=255; pixels the hook layer already wrote keep its alpha. */
 
   /* Set up text-rendering state for subsequent draw_string / draw_string_at
    * calls.  hdc_ points at the mem DC so that existing drawing code works
@@ -585,8 +664,14 @@ void display_output_windows::end_draw_text() {
   unsigned char *pixels = static_cast<unsigned char *>(mem_bits_);
   int total = win_w_ * win_h_;
   for (int i = 0; i < total; i++) {
-    if (pixels[i * 4 + 0] != 0 || pixels[i * 4 + 1] != 0 ||
-        pixels[i * 4 + 2] != 0) {
+    /* Only fix up pixels still at alpha=0: those are ones GDI drew into
+     * (which never touches the alpha channel) that started fully
+     * transparent. A pixel the Lua-draw-hook composite already gave a real
+     * alpha (see composite_hook_surface()) keeps that value instead of
+     * being forced fully opaque. */
+    if (pixels[i * 4 + 3] == 0 &&
+        (pixels[i * 4 + 0] != 0 || pixels[i * 4 + 1] != 0 ||
+         pixels[i * 4 + 2] != 0)) {
       pixels[i * 4 + 3] = 255;
     }
   }

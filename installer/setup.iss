@@ -48,6 +48,12 @@ Name: "{commonappdata}\Conky"
 [Files]
 Source: "{#SOURCE_DIR}\conky.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; Lua-loadable modules (e.g. cairo.dll from lua/cairo.pkg, for
+; lua_draw_hook_pre/post support -- see conky-windows issue #10). Kept in
+; their own subdirectory, found via package.cpath (src/lua/llua.cc), so the
+; Lua module "cairo.dll" can't collide with the real cairo.dll library
+; above despite sharing a filename.
+Source: "{#SOURCE_DIR}\lua_modules\*.dll"; DestDir: "{app}\lua_modules"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs
 Source: "btop.conkyrc"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\..\..\installer\LibreHardwareMonitor\*"; DestDir: "{app}\LibreHardwareMonitor"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs; Tasks: install_lhm
 Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion
@@ -78,6 +84,7 @@ Type: dirifempty; Name: "{commonappdata}\Conky"
 Type: filesandordirs; Name: "{app}\LibreHardwareMonitor"
 Type: files; Name: "{app}\conky.exe"
 Type: files; Name: "{app}\*.dll"
+Type: filesandordirs; Name: "{app}\lua_modules"
 Type: files; Name: "{app}\conky.ico"
 Type: dirifempty; Name: "{app}"
 Type: dirifempty; Name: "{userdocs}\Conky"

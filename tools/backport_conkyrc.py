@@ -233,6 +233,25 @@ CONFIG_SETTINGS = {
         f"below, sticky, etc.) have no Windows equivalent in this port and "
         f"are silently ignored."
     ),
+    "lua_draw_hook_pre": lambda v: (
+        None if not v.strip("'\" ") else
+        f"lua_draw_hook_pre = {v}: Cairo Lua draw hooks are supported on "
+        f"this port. A script calling cairo_xlib_surface_create() directly "
+        f"(the common X11 pattern) gets its X11 display/drawable/visual "
+        f"arguments ignored and is transparently redirected to the "
+        f"portable conky_surface() -- no theme edits needed. Content draws "
+        f"correctly same-frame. New scripts should prefer conky_surface() "
+        f"directly (see upstream issue #10)."
+    ),
+    "lua_draw_hook_post": lambda v: (
+        None if not v.strip("'\" ") else
+        f"lua_draw_hook_post = {v}: supported like lua_draw_hook_pre, with "
+        f"one caveat -- content drawn here is composited starting on the "
+        f"*next* frame (a brief lag) rather than the same frame, and layers "
+        f"underneath conky's own text/graphics rather than on top like "
+        f"upstream 'post' semantics. Usually imperceptible at typical "
+        f"update_interval values (see upstream issue #10)."
+    ),
 }
 
 

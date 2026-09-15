@@ -266,6 +266,11 @@ endif(BUILD_WAYLAND)
 if(OS_WINDOWS)
   set(BUILD_GUI true)
   set(BUILD_WINDOWS true)
+  # No pkg-config on this MinGW toolchain, so Cairo is vendored instead of
+  # discovered (see 3rdparty/cairo, cmake/ConkyPlatformChecks.cmake). Forced
+  # on unconditionally here so Lua draw hooks (lua_draw_hook_pre/post) work
+  # out of the box -- see conky-windows issue #10.
+  set(BUILD_LUA_CAIRO true)
 endif(OS_WINDOWS)
 
 dependent_option(BUILD_MOUSE_EVENTS "Enable mouse event support" true
