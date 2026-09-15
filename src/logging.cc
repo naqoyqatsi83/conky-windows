@@ -209,6 +209,21 @@ void conky::log::init_logger() {
       std::make_shared<spdlog::logger>("conky", sinks.begin(), sinks.end());
   logger->set_level(spdlog::level::trace);
 
+  // spdlog's default error handler aborts the whole process on a sink
+  // failure. On Windows, rotating_file_sink's rename(conky.log ->
+  // conky.1.log) at the 512KB rotation threshold can fail with "Permission
+  // denied" -- Windows' file-locking semantics don't always allow renaming
+  // a file some other handle (antivirus, an indexer, even this same
+  // process's own still-open handle in a narrow window) has open, unlike
+  // POSIX rename(2). That turned a routine, harmless log-rotation hiccup
+  // into a hard crash of the whole running widget once its log file
+  // happened to fill up -- confirmed via a live crash-dump/gdb
+  // reproduction, unrelated to any particular theme or object. A logging
+  // problem should never be fatal to the application it's logging for.
+  logger->set_error_handler([](const std::string &msg) {
+    fprintf(stderr, "conky: non-fatal logging error: %s\n", msg.c_str());
+  });
+
   spdlog::set_default_logger(logger);
 
   // [timestamp][level][source:line][spans...] message

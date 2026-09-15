@@ -51,14 +51,21 @@ UNSUPPORTED_PREFIXES = (
 )
 UNSUPPORTED_EXACT = {
     "i2c", "platform", "hwmon",              # Linux sensors subsystem
-    "key_num_lock", "key_caps_lock", "key_scroll_lock",
-    "keyboard_layout", "mouse_speed",         # X11-only
     "mysql",
-    "top", "top_mem", "top_time", "top_io",  # process list works differently; see REVIEW below instead if present
+    "top_time", "top_io",  # top/top_mem work (see issue #17); time/io sorting not re-verified,
+                            # and io needs BUILD_IOSTATS, off for Windows
     "tcp_portmon",  # BUILD_PORT_MONITORS is gated to OS_LINUX (cmake/ConkyBuildOptions.cmake);
                     # would need GetExtendedTcpTable() ported from scratch, not just re-enabled
     "running_threads",  # threads is supported (see REVIEW below), but "running" (ready-state)
                         # per-thread status isn't exposed by the Toolhelp32 API this port uses
+    "image",  # BUILD_IMLIB2 is off; would need a from-scratch GDI+ backend, not a port (issue #24)
+    "curl", "github_notifications", "stock", "rss",  # BUILD_CURL off (issue #18) -- not incompatible,
+                                                      # just not vendored/linked for this toolchain yet
+    "mixer", "mixerbar", "mixerl", "mixerr", "if_mixer_mute",  # needs Core Audio (issue #21)
+    "desktop", "desktop_number", "desktop_name",  # no stable pre-Win11 API (issue #22)
+    "user_names", "user_times", "user_number", "user_terms",  # low value, not implemented (issue #23)
+    "v6addrs",  # addrs works (issue #15); v6addrs additionally needs BUILD_IPV6, gated to
+                # OS_LINUX at the CMake level (issue #26)
 }
 
 # Objects that work on Windows but have a platform-specific gotcha worth
@@ -236,6 +243,13 @@ CONFIG_SETTINGS = {
         f"own_window_hints = {v}: X11 window-manager hints (skip_taskbar, "
         f"below, sticky, etc.) have no Windows equivalent in this port and "
         f"are silently ignored."
+    ),
+    "xinerama_head": lambda v: (
+        f"xinerama_head = {v}: Xinerama is an X11-only multi-monitor "
+        f"extension with no Windows equivalent in this port -- silently "
+        f"ignored. This port always positions on the primary monitor's "
+        f"work area (see AGENTS.md); there's currently no Windows setting "
+        f"to pick a different monitor by index."
     ),
     "lua_draw_hook_pre": lambda v: (
         None if not v.strip("'\" ") else
