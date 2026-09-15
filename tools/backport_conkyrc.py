@@ -98,6 +98,21 @@ NETWORK_OBJECTS = {
 }
 LINUX_IFACE_RE = re.compile(r"^(eth\d+|wlan\d+|en[ospx]\w*|wl[ospx]\w*|lo)$")
 
+# Objects whose argument is a Linux block device path (no Windows
+# equivalent by device path at all -- needs a manual rework using a drive
+# letter or physical disk index instead).
+DISKIO_OBJECTS = {"diskio", "diskio_read", "diskio_write", "diskiograph",
+                   "diskio_read_graph", "diskio_write_graph"}
+
+# Objects whose argument is a filesystem/mount path on Linux, but a drive
+# letter (e.g. "C:") on Windows -- a mechanical rename once you know which
+# drive it maps to.
+FS_OBJECTS = {"fs_used", "fs_free", "fs_free_perc", "fs_used_perc",
+              "fs_size", "fs_bar", "fs_bar_free", "fs_type"}
+
+UNIX_PATH_RE = re.compile(r"^/")
+WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:\\?$")
+
 # ---------------------------------------------------------------------------
 # ${exec ...} shell-body idiom table.
 # Each entry: (name, regex, category, message, replacement_or_None)
@@ -198,6 +213,59 @@ EXEC_OBJECT_NAMES = {"exec", "execi", "execp", "execpi", "execbar", "execibar",
                       "execgraph", "execigraph", "execgauge", "execigauge",
                       "texeci", "lua", "lua_parse"}
 
+# ---------------------------------------------------------------------------
+# conky.config = { ... } settings with a Windows-specific gotcha. This port
+# always renders as a single WS_POPUP layered window with per-pixel alpha
+# (see src/output/display-windows.cc) regardless of most window-placement
+# settings, so X11/WM-specific config is easy to port "successfully" (it
+# parses fine, nothing errors) while silently doing nothing.
+# ---------------------------------------------------------------------------
+
+CONFIG_SETTINGS = {
+    "own_window_type": lambda v: (
+        None if v.strip("'\"") in ("", "normal") else
+        f"own_window_type = {v} has no effect on Windows -- this port always "
+        f"renders as a single layered popup window regardless of this setting."
+    ),
+    "own_window_hints": lambda v: (
+        None if not v.strip("'\" ") else
+        f"own_window_hints = {v}: X11 window-manager hints (skip_taskbar, "
+        f"below, sticky, etc.) have no Windows equivalent in this port and "
+        f"are silently ignored."
+    ),
+}
+
+
+def extract_conky_config(source: str) -> str | None:
+    """Return the raw text inside conky.config = { ... }, or None."""
+    m = re.search(r"conky\.config\s*=\s*\{(.*?)\n\}", source, re.DOTALL)
+    return m.group(1) if m else None
+
+
+def lint_config_section(source: str) -> list[Finding]:
+    config_text = extract_conky_config(source)
+    if config_text is None:
+        return []
+    findings = []
+    config_start = source.index(config_text)
+    # Value is either a quoted string (which may itself contain commas, e.g.
+    # own_window_hints = 'undecorated,skip_taskbar,...') or a bare
+    # comma-terminated token (numbers, true/false, identifiers).
+    value_pattern = r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|[^,\n]+"
+    for m in re.finditer(
+        rf"^\s*(\w+)\s*=\s*({value_pattern}),?\s*$", config_text, re.MULTILINE
+    ):
+        key, value = m.group(1), m.group(2).strip()
+        checker = CONFIG_SETTINGS.get(key)
+        if checker is None:
+            continue
+        message = checker(value)
+        if message is None:
+            continue
+        line_no = source[: config_start + m.start()].count("\n") + 1
+        findings.append(Finding(line_no, f"{key} = {value}", "CONFIG", message))
+    return findings
+
 
 @dataclass
 class Finding:
@@ -268,6 +336,30 @@ def classify(name: str, args: str) -> tuple[str, str] | None:
                 f"friendly adapter names instead (check `Get-NetAdapter`, e.g. "
                 f"'Ethernet' or 'Wi-Fi').",
             )
+    if name in DISKIO_OBJECTS:
+        first_arg = args.strip().split()[0] if args.strip() else ""
+        if UNIX_PATH_RE.match(first_arg) and not WINDOWS_DRIVE_RE.match(first_arg):
+            return (
+                "REVIEW",
+                f"'{first_arg}' is a Linux block device path -- ${{{name}}} works "
+                f"on Windows, but there's no equivalent by device path. Needs a "
+                f"manual rework using a drive letter (e.g. 'C:') or physical disk "
+                f"index instead.",
+            )
+    if name in FS_OBJECTS:
+        tokens = args.strip().split()
+        # fs_bar/fs_bar_free take a leading "height[,width]" size spec before
+        # the path; the others take just the path as their only argument.
+        path_arg = tokens[-1] if name in ("fs_bar", "fs_bar_free") else (
+            tokens[0] if tokens else ""
+        )
+        if UNIX_PATH_RE.match(path_arg) and not WINDOWS_DRIVE_RE.match(path_arg):
+            return (
+                "REVIEW",
+                f"'{path_arg}' is a Linux mount path. Windows ${{{name}}} takes a "
+                f"drive letter instead (e.g. 'C:') -- a mechanical rename once you "
+                f"know which drive this mount point maps to.",
+            )
     return None
 
 
@@ -289,6 +381,7 @@ def lint(source: str) -> tuple[Report, str]:
     """Returns (report, rewritten_source)."""
     extracted = extract_conky_text(source)
     report = Report()
+    report.findings.extend(lint_config_section(source))
     if extracted is None:
         report.findings.append(
             Finding(0, "", "ERROR",
@@ -355,12 +448,14 @@ def format_report(report: Report, config_path: str) -> str:
     review = [f for f in report.findings if f.category == "REVIEW"]
     exec_auto = [f for f in report.findings if f.category == "EXEC (auto)"]
     exec_manual = [f for f in report.findings if f.category == "EXEC (manual)"]
+    config = [f for f in report.findings if f.category == "CONFIG"]
 
     lines.append(
         f"{report.ok_count} object(s) OK as-is, "
         f"{len(unsupported)} unsupported, {len(review)} need review, "
         f"{len(exec_auto)} exec block(s) auto-handled, "
-        f"{len(exec_manual)} exec block(s) need manual rewrite."
+        f"{len(exec_manual)} exec block(s) need manual rewrite, "
+        f"{len(config)} conky.config setting(s) flagged."
     )
     lines.append("")
 
@@ -375,6 +470,7 @@ def format_report(report: Report, config_path: str) -> str:
             lines.append(f"  {f.message}")
         lines.append("")
 
+    section("conky.config settings needing review", config)
     section("Unsupported objects - no Windows equivalent, needs manual removal/replacement", unsupported)
     section("Objects needing review - work, but have a Windows-specific gotcha", review)
     section("Exec blocks - auto-handled", exec_auto)
