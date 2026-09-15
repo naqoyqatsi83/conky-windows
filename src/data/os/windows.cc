@@ -39,6 +39,7 @@
 #include <pdh.h>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -972,114 +973,111 @@ int update_diskio(void) {
 
 /* ---- Top processes via Toolhelp ---- */
 
+namespace {
+/* System-wide CPU-time delta since the last call, in centiseconds --
+ * independent of update_cpu_usage()'s own prev_cpu/filetime_to_ull
+ * tracking above (different consumer, own state), mirroring how
+ * calc_cpu_total() (src/data/os/linux.cc, the Linux reference this
+ * mirrors) keeps its own independent previous_total static too. */
+unsigned long long top_cpu_total_delta() {
+  static unsigned long long previous_total = 0;
+  FILETIME idle, kernel, user;
+  if (!GetSystemTimes(&idle, &kernel, &user)) { return 0; }
+  unsigned long long total =
+      (filetime_to_ull(kernel) + filetime_to_ull(user)) / 10000;
+  unsigned long long delta = (total >= previous_total) ? (total - previous_total) : 0;
+  previous_total = total;
+  return delta;
+}
+}  // namespace
+
+/* Populates the shared first_process list (src/data/top.cc) -- NOT
+ * info.cpu[]/info.memu[] directly. process_find_top() (top.cc), the only
+ * caller, walks first_process itself right after calling this to build
+ * those arrays via its own priority queues; an earlier version of this
+ * function sorted into info.cpu[]/info.memu[] directly and never touched
+ * first_process at all, so process_find_top()'s walk immediately
+ * overwrote that work with the result of walking an empty list --
+ * ${top}/${top_mem} always printed blank. */
 void get_top_info(void) {
+  unsigned long long total = top_cpu_total_delta();
+
   HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-  if (snap == INVALID_HANDLE_VALUE) {
-    return;
-  }
-
-  /* Build a list of processes sorted by PID, filling in basic info.
-   * For accurate CPU percentages, we track CPU times across calls. */
-  static struct process local_list = {};
-  struct process *p;
-  unsigned int n;
-
-  /* Free previous list */
-  while (local_list.next != nullptr) {
-    p = local_list.next;
-    local_list.next = p->next;
-    free_and_zero(p->name);
-    free_and_zero(p->basename);
-    delete p;
-  }
+  if (snap == INVALID_HANDLE_VALUE) { return; }
 
   PROCESSENTRY32 pe = {};
   pe.dwSize = sizeof(PROCESSENTRY32);
 
-  struct process *tail = &local_list;
-
   if (Process32First(snap, &pe)) {
     do {
-      p = new struct process;
-      memset(p, 0, sizeof(struct process));
-      p->pid = static_cast<pid_t>(pe.th32ProcessID);
+      /* get_process() (top.cc) finds-or-creates the persistent entry for
+       * this pid in first_process -- new entries start with
+       * previous_user_time/previous_kernel_time = ULONG_MAX (sentinel). */
+      struct process *p = get_process(static_cast<pid_t>(pe.th32ProcessID));
+      if (p == nullptr) { continue; }
+
+      p->time_stamp = g_time; /* mark alive; process_cleanup() purges stale ones */
+
+      free_and_zero(p->name);
+      free_and_zero(p->basename);
       p->name = strndup(pe.szExeFile, DEFAULT_TEXT_BUFFER_SIZE);
       p->basename = strndup(pe.szExeFile, DEFAULT_TEXT_BUFFER_SIZE);
 
-      /* Get per-process CPU times and memory if we can open the handle */
-      HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                                    FALSE, pe.th32ProcessID);
+      HANDLE hProcess = OpenProcess(
+          PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE,
+          pe.th32ProcessID);
       if (hProcess != nullptr) {
         FILETIME create, exit, kt, ut;
         if (GetProcessTimes(hProcess, &create, &exit, &kt, &ut)) {
-          p->user_time =
+          auto user_time =
               static_cast<unsigned long>(filetime_to_ull(ut) / 10000);
-          p->kernel_time =
+          auto kernel_time =
               static_cast<unsigned long>(filetime_to_ull(kt) / 10000);
+
+          /* Same delta/sentinel handling as calc_cpu_total()'s
+           * per-process counterpart in the Linux reference
+           * (process_parse_stat(), src/data/os/linux.cc): store the
+           * *delta* into user_time/kernel_time (what calc_cpu_each()
+           * below reads), not the raw cumulative value. */
+          if (p->previous_user_time == ULONG_MAX) {
+            p->previous_user_time = user_time;
+          }
+          if (p->previous_kernel_time == ULONG_MAX) {
+            p->previous_kernel_time = kernel_time;
+          }
+          if (p->previous_user_time > user_time) {
+            p->previous_user_time = user_time;
+          }
+          if (p->previous_kernel_time > kernel_time) {
+            p->previous_kernel_time = kernel_time;
+          }
+
+          p->user_time = user_time - p->previous_user_time;
+          p->kernel_time = kernel_time - p->previous_kernel_time;
+          p->previous_user_time = user_time;
+          p->previous_kernel_time = kernel_time;
         }
-        PROCESS_MEMORY_COUNTERS pmc;
+
+        PROCESS_MEMORY_COUNTERS_EX pmc = {};
         pmc.cb = sizeof(pmc);
-        if (GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc))) {
+        if (GetProcessMemoryInfo(
+                hProcess, reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc),
+                sizeof(pmc))) {
           p->rss = pmc.WorkingSetSize;
+          p->vsize = pmc.PagefileUsage;
         }
         CloseHandle(hProcess);
       }
-
-      p->previous_user_time = 0;
-      p->previous_kernel_time = 0;
-      p->amount = 0.0f;
-
-      tail->next = p;
-      p->previous = tail;
-      tail = p;
     } while (Process32Next(snap, &pe));
   }
-
   CloseHandle(snap);
 
-  /* Sort first N processes by CPU into info.cpu[].
-   * Simple O(n) scan to pick top 10 by estimated CPU. */
-  for (n = 0; n < 10; n++) {
-    info.cpu[n] = nullptr;
-    info.memu[n] = nullptr;
-    info.time[n] = nullptr;
-  }
-
-  struct process *best_cpu[10] = {};
-  struct process *best_mem[10] = {};
-
-  /* Scan: repeatedly find max element and slot it. CPU is approximate
-   * (difference from toolhelp doesn't give true %). */
-  for (p = local_list.next; p != nullptr; p = p->next) {
-    /* Insert into best_cpu sorted by amount (descending) */
-    for (n = 0; n < 10; n++) {
-      if (best_cpu[n] == nullptr ||
-          p->amount > best_cpu[n]->amount) {
-        /* Shift down */
-        for (unsigned int m = 9; m > n; m--) {
-          best_cpu[m] = best_cpu[m - 1];
-        }
-        best_cpu[n] = p;
-        break;
-      }
-    }
-
-    /* Insert into best_mem sorted by rss (descending) */
-    for (n = 0; n < 10; n++) {
-      if (best_mem[n] == nullptr ||
-          p->rss > best_mem[n]->rss) {
-        for (unsigned int m = 9; m > n; m--) {
-          best_mem[m] = best_mem[m - 1];
-        }
-        best_mem[n] = p;
-        break;
-      }
-    }
-  }
-
-  for (n = 0; n < 10; n++) {
-    info.cpu[n] = best_cpu[n];
-    info.memu[n] = best_mem[n];
+  /* Same formula as calc_cpu_each() (src/data/top.cc's Linux reference);
+   * skips its optional top_cpu_separate core-count scaling for now. */
+  for (struct process *p = first_process; p != nullptr; p = p->next) {
+    p->amount = total > 0 ? 100.0f * static_cast<float>(p->user_time + p->kernel_time) /
+                                static_cast<float>(total)
+                          : 0.0f;
   }
 }
 
