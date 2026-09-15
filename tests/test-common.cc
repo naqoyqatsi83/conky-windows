@@ -68,7 +68,16 @@ std::string get_invalid_environment_variable_name() {
 }
 
 TEST_CASE("to_real_path simplifies complex paths", "[to_real_path]") {
+#ifdef _WIN32
+  // std::filesystem resolves "/a/b/c/../d/../../e" against the current
+  // drive root and normalizes to backslashes on Windows, e.g. "C:\a\e" -
+  // this is correct platform behavior, not a bug, so the expectation
+  // differs from POSIX rather than being skipped outright.
+  REQUIRE_THAT(to_real_path("/a/b/c/../d/../../e").string(),
+               Catch::Matchers::Matches(R"(^[A-Za-z]:\\a\\e$)"));
+#else
   REQUIRE(to_real_path("/a/b/c/../d/../../e") == "/a/e");
+#endif
 }
 TEST_CASE("to_real_path resolves variables", "[to_real_path]") {
   REQUIRE(to_real_path("$HOME/test") == std::string(getenv("HOME")) + "/test");

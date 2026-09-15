@@ -57,8 +57,51 @@ void scan_gpu_arg(struct text_object *obj, const char *arg, void *free_at_crash,
   }
 }
 
-/* Read the gpu.dat file written by lhm-temp.exe.
+/* Parse a gpu.dat-format file into gpus[]. Pure I/O + parsing, no side
+ * effects beyond reading the file (no staleness check, no helper trigger)
+ * — safe to call directly from unit tests with a canned file.
  * Format: id|temp_c|util_pct|mem_used_mib|mem_total_mib|fan_rpm|name
+ *
+ * Returns the number of GPUs parsed (0 if the file is empty or has no
+ * valid rows — a legitimate outcome, e.g. lhm-temp found zero GPU
+ * hardware), or -1 if the file could not be opened at all. Does NOT
+ * memset gpus[] — caller is responsible, same as before this was split
+ * out of read_gpu_info(). */
+int parse_gpu_file(const char *path, struct gpu_info *gpus, int max_gpus) {
+  FILE *f = fopen(path, "r");
+  if (f == nullptr) return -1;
+
+  int count = 0;
+  char line[512];
+  while (count < max_gpus && fgets(line, sizeof(line), f)) {
+    int id;
+    int temp = 0, util = 0, fan = 0;
+    unsigned long long mem_used = 0, mem_total = 0;
+    char name[256] = "";
+
+    int parsed = sscanf(line, "%d|%d|%d|%llu|%llu|%d|%255[^\n]",
+                        &id, &temp, &util, &mem_used, &mem_total, &fan, name);
+    if (parsed >= 1 && id >= 0 && id < max_gpus) {
+      gpus[id].present = 1;
+      gpus[id].temp_celsius = temp;
+      gpus[id].util_percent = util;
+      gpus[id].mem_used = mem_used;
+      gpus[id].mem_total = mem_total;
+      gpus[id].fan_rpm = fan;
+      size_t nlen = strlen(name);
+      while (nlen > 0 && (name[nlen-1] == '\r' || name[nlen-1] == '\n')) {
+        name[--nlen] = '\0';
+      }
+      strncpy(gpus[id].name, name, sizeof(gpus[id].name) - 1);
+      gpus[id].name[sizeof(gpus[id].name) - 1] = '\0';
+      if (id + 1 > count) count = id + 1;
+    }
+  }
+  fclose(f);
+  return count;
+}
+
+/* Read the gpu.dat file written by lhm-temp.exe.
  * Values from lhm-temp are in MiB — multiply by 1048576 before human_readable().
  *
  * If the file is missing or stale (>15 s without update), triggers the
@@ -91,39 +134,11 @@ int read_gpu_info(struct gpu_info *gpus, int max_gpus) {
     }
   }
 
-  FILE *f = fopen(path.c_str(), "r");
-  if (f == nullptr) {
+  int count = parse_gpu_file(path.c_str(), gpus, max_gpus);
+  if (count < 0) {
     trigger_lhm_helper();
     return 0;
   }
-
-  int count = 0;
-  char line[512];
-  while (count < max_gpus && fgets(line, sizeof(line), f)) {
-    int id;
-    int temp = 0, util = 0, fan = 0;
-    unsigned long long mem_used = 0, mem_total = 0;
-    char name[256] = "";
-
-    int parsed = sscanf(line, "%d|%d|%d|%llu|%llu|%d|%255[^\n]",
-                        &id, &temp, &util, &mem_used, &mem_total, &fan, name);
-    if (parsed >= 1 && id >= 0 && id < max_gpus) {
-      gpus[id].present = 1;
-      gpus[id].temp_celsius = temp;
-      gpus[id].util_percent = util;
-      gpus[id].mem_used = mem_used;
-      gpus[id].mem_total = mem_total;
-      gpus[id].fan_rpm = fan;
-      size_t nlen = strlen(name);
-      while (nlen > 0 && (name[nlen-1] == '\r' || name[nlen-1] == '\n')) {
-        name[--nlen] = '\0';
-      }
-      strncpy(gpus[id].name, name, sizeof(gpus[id].name) - 1);
-      gpus[id].name[sizeof(gpus[id].name) - 1] = '\0';
-      if (id + 1 > count) count = id + 1;
-    }
-  }
-  fclose(f);
   return count;
 }
 

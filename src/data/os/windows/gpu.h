@@ -26,6 +26,12 @@ struct gpu_info {
  * gpus array is indexed by GPU ID. */
 int read_gpu_info(struct gpu_info *gpus, int max_gpus);
 
+/* Pure gpu.dat parser, no side effects (no staleness check, no helper
+ * trigger) — exposed for unit testing. Returns the number of GPUs parsed
+ * (0 for an empty/no-valid-rows file), or -1 if the file couldn't be
+ * opened at all. See tests/test-windows-gpu.cc. */
+int parse_gpu_file(const char *path, struct gpu_info *gpus, int max_gpus);
+
 /* Text object callbacks for ${gputemp <N>}, ${gpuutil <N>}, etc.
  * obj->data.i stores the GPU index (default 0). */
 void scan_gpu_arg(struct text_object *obj, const char *arg, void *free_at_crash,

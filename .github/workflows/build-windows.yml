@@ -36,6 +36,7 @@ jobs:
         run: |
           cmake -B build -G "MinGW Makefiles" \
             -DBUILD_NVIDIA_NVML=ON \
+            -DBUILD_TESTING=ON \
             -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++" \
             -DCMAKE_C_FLAGS="-static-libgcc -static-libstdc++" \
             -DLUA_INCLUDE_DIR=/mingw64/include \
@@ -55,6 +56,12 @@ jobs:
         shell: msys2 {0}
         run: |
           mingw32-make.exe -j$(nproc) -C build 2>&1
+
+      - name: Run tests
+        if: success()
+        shell: msys2 {0}
+        run: |
+          ./build/tests/test-conky.exe --reporter console
 
       - name: Bundle runtime DLLs
         if: success()

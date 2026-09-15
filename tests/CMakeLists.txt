@@ -4,6 +4,17 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${conky_includes})
 
+# Windows compat layer — mirrors src/CMakeLists.txt. include_directories()
+# there is scoped to src/ and its descendants, so it never reaches this
+# sibling directory; without it, conky.h's `#include <sys/utsname.h>` (a
+# POSIX header MinGW doesn't provide) fails to find the compat shim at
+# src/compat/sys/utsname.h and every test-*.cc TU fails to compile.
+if(OS_WINDOWS)
+  include_directories(${CMAKE_SOURCE_DIR}/src/compat)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include${CMAKE_SOURCE_DIR}/src/compat/compat_windows.h")
+  add_definitions(-D_WIN32_WINNT=0x0601)
+endif()
+
 file(GLOB test_srcs test-*.cc)
 
 if(NOT OS_LINUX)
@@ -12,6 +23,10 @@ endif()
 
 if(NOT OS_DARWIN)
   list(FILTER test_srcs EXCLUDE REGEX ".*darwin.*\.cc?")
+endif()
+
+if(NOT OS_WINDOWS)
+  list(FILTER test_srcs EXCLUDE REGEX ".*windows.*\.cc?")
 endif()
 
 add_library(Catch2 STATIC catch2/catch_amalgamated.cpp)

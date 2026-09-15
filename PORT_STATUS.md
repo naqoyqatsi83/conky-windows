@@ -31,7 +31,18 @@
 - ❌ `acpitemp` variable — no ACPI on Windows; WMI backend returns -1°C on Ryzen 9800X3D
 - ❌ Lua scripting — may work but not tested
 - ❌ Mouse events (`${goto}`, clickable areas) — `WS_EX_TRANSPARENT` prevents clicks
-- ❌ Automated tests — Catch2 suites not set up for MinGW
+- ✅ Automated tests — Catch2 suite now builds and runs on MinGW
+  (`-DBUILD_TESTING=ON`; run `build/tests/test-conky.exe`). Fixed 2026-09-15:
+  `tests/CMakeLists.txt` never picked up the `src/compat` include dir (a
+  Windows POSIX-header shim), since CMake's directory-scoped
+  `include_directories()` in `src/CMakeLists.txt` doesn't propagate to the
+  sibling `tests/` subdirectory — every `test-*.cc` TU failed on
+  `sys/utsname.h: No such file or directory`. 37 test cases / 504 assertions
+  pass now, including new `tests/test-windows-gpu.cc` covering
+  `parse_gpu_file()` (the gpu.dat parser, split out of `read_gpu_info()`
+  specifically so it's testable without triggering the real lhm-temp
+  scheduled-task restart side effect). Wired into CI
+  (`.github/workflows/build-windows.yml`). See conky-windows issue #2.
 - ❌ Build configs other than MinGW (MSVC, clang-cl not tested)
 - ❌ Multi-monitor alignment logic for secondary monitor
 
