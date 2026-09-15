@@ -39,7 +39,24 @@ target_link_libraries(test-conky
   PRIVATE Catch2
   PUBLIC conky_core
 )
-catch_discover_tests(test-conky)
+if(OS_WINDOWS)
+  # catch_discover_tests() runs the freshly-linked test binary *during the
+  # build itself* to enumerate individual TEST_CASEs for ctest. On this
+  # MinGW toolchain that binary isn't necessarily runnable yet at that
+  # point — it can depend on MinGW runtime DLLs (libstdc++, liblua, etc.)
+  # that only get bundled next to conky.exe in a separate post-build CI
+  # step, never for tests/test-conky.exe. Confirmed failing in CI with
+  # STATUS_DLL_NOT_FOUND (0xc0000135) even though the binary links fine.
+  # A plain add_test() just registers the command for `ctest`/manual
+  # invocation later, without ever executing it at configure/build time,
+  # sidestepping the whole DLL-availability-at-build-time question. The
+  # cost is coarser ctest granularity (one aggregate entry instead of one
+  # per Catch2 TEST_CASE) — acceptable; run test-conky.exe directly for
+  # per-case output.
+  add_test(NAME test-conky COMMAND test-conky)
+else()
+  catch_discover_tests(test-conky)
+endif()
 
 if(RUN_TESTS)
   add_custom_command(TARGET test-conky
