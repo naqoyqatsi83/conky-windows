@@ -30,6 +30,7 @@ jobs:
             mingw-w64-x86_64-lua
             mingw-w64-x86_64-git
             mingw-w64-x86_64-gperf
+            patch
 
       - name: CMake Configure
         shell: msys2 {0}
