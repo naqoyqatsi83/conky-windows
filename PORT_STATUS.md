@@ -58,6 +58,15 @@
 
 ## Known Issues
 
+- ⚠️ **`conky.exe` cannot start at all without `nvml.dll` present** (no NVIDIA
+  driver) — `3rdparty/nvml`'s import library makes `nvml.dll` a hard, eager
+  PE import, not the lazy/optional dependency `nvidia_nvml.cc:90`'s
+  `LoadLibraryA` check assumes. Found 2026-09-15 when CI's test binary
+  (same `conky_core`) failed to launch on a GPU-less GitHub Actions runner —
+  nothing had ever actually *executed* the built binary in CI before (only
+  file-existence checks). CI now builds with `-DBUILD_NVIDIA_NVML=OFF` until
+  this is fixed properly (dynamic `GetProcAddress` loading or verified
+  delay-load); local dev builds with NVML ON are unaffected. See issue #4.
 - GDI `CopyFromScreen` cannot reliably capture layered window content;
   `PrintWindow` with `PW_RENDERFULLCONTENT` works
 - GDI drawing functions (`FillRect`, `DrawText`) don't write alpha channel;
