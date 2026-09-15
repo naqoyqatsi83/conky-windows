@@ -159,9 +159,12 @@ mingw32-make.exe -j$(nproc) conky.exe
 cd ..\installer
 .\download_lhm.cmd
 
-# 3. Compile temperature helper
-$csc = Get-ChildItem "C:\Windows\Microsoft.NET\Framework64" -Recurse -Filter "csc.exe" | Select-Object -First 1
-& $csc -nologo -target:winexe -reference:LibreHardwareMonitor\LibreHardwareMonitorLib.dll -out:LibreHardwareMonitor\lhm-temp.exe lhm-temp\lhm-temp.cs
+# 3. Compile temperature helper — always use this script, never csc.exe by
+# hand: installer/LibreHardwareMonitor/lhm-temp.exe is a gitignored build
+# artifact setup.iss bundles as-is with no freshness check, so a stale
+# manual compile can silently ship with no GPU sensor data (see PORT_STATUS.md).
+.\build_lhm_temp.ps1
+.\check_lhm_freshness.ps1   # confirms the above actually produced a fresh build
 
 # 4. Build installer
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" setup.iss

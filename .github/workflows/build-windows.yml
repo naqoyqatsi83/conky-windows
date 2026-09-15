@@ -137,17 +137,21 @@ jobs:
         if: success()
         shell: pwsh
         run: |
-          $csc = "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          $ref = (Resolve-Path "installer\LibreHardwareMonitor\LibreHardwareMonitorLib.dll").Path
-          Write-Output "Compiler: $csc"
-          Write-Output "Reference: $ref"
-          # Verify the DLL has the Computer type
-          Add-Type -Path $ref
-          Write-Output "Computer type found: $([type]::GetType('LibreHardwareMonitor.Hardware.Computer, LibreHardwareMonitorLib', $false))"
-          & $csc -nologo -target:winexe `
-            -reference:"$ref" `
-            -out:"installer\LibreHardwareMonitor\lhm-temp.exe" `
-            "installer\lhm-temp\lhm-temp.cs"
+          .\installer\build_lhm_temp.ps1
+
+      - name: Check lhm-temp.exe freshness
+        if: success()
+        shell: pwsh
+        run: |
+          # Guards against exactly the bug found 2026-09-15: setup.iss bundles
+          # installer/LibreHardwareMonitor/lhm-temp.exe (a gitignored build
+          # artifact) as-is with no freshness check of its own, and a stale
+          # local compile silently produced no GPU sensor data with zero
+          # visible errors anywhere. In CI this should always pass (the
+          # previous step just rebuilt it), but it's cheap insurance and
+          # documents the invariant — this exact script is also the one to
+          # run locally before a manual installer build. See issue #2.
+          .\installer\check_lhm_freshness.ps1
 
       - name: Setup Inno Setup
         if: success()
@@ -172,6 +176,47 @@ jobs:
         with:
           name: Conky-Installer
           path: installer\Conky-*-Setup.exe
+
+      - name: Install built installer (silent, with LHM task)
+        if: success()
+        shell: pwsh
+        run: |
+          # Installer-integration regression test for issue #2: actually run
+          # the built installer and verify the ConkyTempHelper scheduled
+          # task it creates is well-formed, rather than only ever checking
+          # that conky.exe exists. This is the exact class of bug fixed in
+          # d8ee2dec (schtasks /TR quoting) — that bug only ever showed up
+          # by actually running the installer and inspecting the resulting
+          # task, never by anything CI checked before.
+          $installer = Get-ChildItem "installer\Conky-*-Setup.exe" | Select-Object -First 1
+          Write-Output "Installer: $($installer.FullName)"
+          $proc = Start-Process -FilePath $installer.FullName `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/MERGETASKS=install_lhm' `
+            -PassThru -Wait
+          Write-Output "Installer exit code: $($proc.ExitCode)"
+          if ($proc.ExitCode -ne 0) { throw "Installer failed with exit code $($proc.ExitCode)" }
+          Get-ChildItem "C:\Program Files\Conky" -ErrorAction Stop
+
+      - name: Verify ConkyTempHelper scheduled task
+        if: success()
+        shell: pwsh
+        run: |
+          .\tests\windows\verify_scheduled_task.ps1 `
+            -ExpectedExePath "C:\Program Files\Conky\LibreHardwareMonitor\lhm-temp.exe"
+
+      - name: Uninstall (cleanup)
+        if: always()
+        shell: pwsh
+        run: |
+          $uninst = "C:\Program Files\Conky\unins000.exe"
+          if (Test-Path $uninst) {
+            $proc = Start-Process -FilePath $uninst `
+              -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' `
+              -PassThru -Wait
+            Write-Output "Uninstaller exit code: $($proc.ExitCode)"
+          } else {
+            Write-Output "No uninstaller found at $uninst — nothing to clean up."
+          }
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
