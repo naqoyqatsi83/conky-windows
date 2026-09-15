@@ -179,6 +179,7 @@ jobs:
 
       - name: Install built installer (silent, with LHM task)
         if: success()
+        timeout-minutes: 5
         shell: pwsh
         run: |
           # Installer-integration regression test for issue #2: actually run
@@ -188,17 +189,30 @@ jobs:
           # d8ee2dec (schtasks /TR quoting) — that bug only ever showed up
           # by actually running the installer and inspecting the resulting
           # task, never by anything CI checked before.
+          #
+          # See installer/run_elevated.ps1 for why this doesn't just
+          # Start-Process the installer directly (PrivilegesRequired=admin
+          # hangs forever on a UAC prompt with no one to click it —
+          # confirmed the hard way, a first attempt sat for 47 minutes
+          # before being cancelled) and why it doesn't build the scheduled
+          # task via schtasks' /TR string parameter either (unreliable
+          # PowerShell native-argument quoting, confirmed locally).
+          # timeout-minutes above is a hard backstop in case this ever
+          # hangs for some other reason — if the CI job's own process turns
+          # out not to be elevated enough to create a HighestAvailable task,
+          # this fails fast (schtasks "Access is denied") rather than
+          # hanging, and that's the answer to the open question noted in
+          # run_elevated.ps1.
           $installer = Get-ChildItem "installer\Conky-*-Setup.exe" | Select-Object -First 1
           Write-Output "Installer: $($installer.FullName)"
-          $proc = Start-Process -FilePath $installer.FullName `
-            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/MERGETASKS=install_lhm' `
-            -PassThru -Wait
-          Write-Output "Installer exit code: $($proc.ExitCode)"
-          if ($proc.ExitCode -ne 0) { throw "Installer failed with exit code $($proc.ExitCode)" }
-          Get-ChildItem "C:\Program Files\Conky" -ErrorAction Stop
+          .\installer\run_elevated.ps1 -ExePath $installer.FullName `
+            -Arguments "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MERGETASKS=install_lhm" `
+            -WaitForPath "C:\Program Files\Conky\conky.exe"
+          Get-ChildItem "C:\Program Files\Conky"
 
       - name: Verify ConkyTempHelper scheduled task
         if: success()
+        timeout-minutes: 2
         shell: pwsh
         run: |
           .\tests\windows\verify_scheduled_task.ps1 `
@@ -206,17 +220,20 @@ jobs:
 
       - name: Uninstall (cleanup)
         if: always()
+        timeout-minutes: 5
         shell: pwsh
         run: |
+          # Same UAC-hang problem and same fix as the install step above —
+          # Inno Setup uninstallers inherit PrivilegesRequired from the
+          # installer that generated them.
           $uninst = "C:\Program Files\Conky\unins000.exe"
-          if (Test-Path $uninst) {
-            $proc = Start-Process -FilePath $uninst `
-              -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' `
-              -PassThru -Wait
-            Write-Output "Uninstaller exit code: $($proc.ExitCode)"
-          } else {
+          if (-not (Test-Path $uninst)) {
             Write-Output "No uninstaller found at $uninst — nothing to clean up."
+            exit 0
           }
+          .\installer\run_elevated.ps1 -ExePath $uninst `
+            -Arguments "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" `
+            -WaitWhilePathExists "C:\Program Files\Conky"
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
