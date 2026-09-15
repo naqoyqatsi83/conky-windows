@@ -911,7 +911,12 @@ void update_text_area() {
           escaped += "\\n\n";
         } else if (c == '\01') {
           escaped += "•";
-        } else if (c >= 32) {
+        } else if (static_cast<unsigned char>(c) >= 32) {
+          /* unsigned cast: char is signed on this target, so UTF-8
+           * continuation/lead bytes (>= 0x80) would otherwise compare as
+           * negative and always fall into the '?' branch below, even
+           * though nothing is actually wrong with the underlying text --
+           * this is a debug-log-only artifact, not a rendering bug. */
           escaped += c;
         } else {
           escaped += '?';
@@ -1270,7 +1275,9 @@ int draw_each_line_inner(char *s, int special_index, int last_special_applied) {
     std::string line_for_log;
     for (char *cp = s; *cp && *cp != '\n'; cp++) {
       if (*cp == SPECIAL_CHAR) line_for_log += '#';
-      else if (*cp >= 32) line_for_log += *cp;
+      /* unsigned cast: see the matching comment in update_text_area's
+       * text_buffer dump above -- same signed-char pitfall. */
+      else if (static_cast<unsigned char>(*cp) >= 32) line_for_log += *cp;
       else line_for_log += '?';
     }
     LOG_INFO("draw_each_line_inner: sp={} cur_y={} cur_x={} line=[{}]", special_index, cur_y, cur_x, line_for_log);
