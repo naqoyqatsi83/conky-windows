@@ -34,16 +34,16 @@ jobs:
       - name: CMake Configure
         shell: msys2 {0}
         run: |
-          # NVML is OFF here: 3rdparty/nvml links as a hard, eager PE import
-          # (nvml.dll appears in conky.exe's standard DLL import table, same
-          # as KERNEL32.dll), so any machine without an NVIDIA driver can't
-          # even launch conky.exe — confirmed by test-conky.exe (same
-          # conky_core) failing to start at all on this GPU-less runner.
-          # See issue #4. Re-enable once NVML is a true lazy/dynamically-
-          # loaded dependency (matching nvidia_nvml.cc's own LoadLibraryA
-          # soft-check, which is currently dead code in the "missing" case).
+          # NVML re-enabled: nvml.dll is now resolved dynamically at runtime
+          # (src/data/hardware/nvidia_nvml.cc, via LoadLibraryA/
+          # GetProcAddress against the nvml_headers-only CMake target) rather
+          # than linked as a hard, eager PE import. This run's "Run tests"
+          # step is the real regression check — it executes test-conky.exe
+          # (same conky_core) on this GPU-less runner, which previously
+          # failed to even start when nvml.dll was a hard dependency. See
+          # issue #4.
           cmake -B build -G "MinGW Makefiles" \
-            -DBUILD_NVIDIA_NVML=OFF \
+            -DBUILD_NVIDIA_NVML=ON \
             -DBUILD_TESTING=ON \
             -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++" \
             -DCMAKE_C_FLAGS="-static-libgcc -static-libstdc++" \

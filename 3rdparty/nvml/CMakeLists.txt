@@ -46,3 +46,14 @@ set_target_properties(nvml PROPERTIES
   IMPORTED_LOCATION "${NVML_LIB}"
   INTERFACE_INCLUDE_DIRECTORIES "${NVML_INCLUDE_DIR}"
   INTERFACE_COMPILE_DEFINITIONS "NVIDIA_NVML_VERSION=${NVIDIA_NVML_VERSION_NUMBER}")
+
+# Header-only variant: exposes NVML's headers/version without linking the
+# import library. On Windows, linking `nvml` directly makes nvml.dll a hard,
+# eager PE import — conky.exe then can't even start on a machine without an
+# NVIDIA driver (see conky-windows issue #4). Consumers that resolve NVML
+# symbols dynamically at runtime themselves (src/data/hardware/
+# nvidia_nvml.cc, via LoadLibraryA/GetProcAddress) should link this instead.
+add_library(nvml_headers INTERFACE)
+target_include_directories(nvml_headers INTERFACE "${NVML_INCLUDE_DIR}")
+target_compile_definitions(nvml_headers INTERFACE
+  "NVIDIA_NVML_VERSION=${NVIDIA_NVML_VERSION_NUMBER}")

@@ -58,15 +58,20 @@
 
 ## Known Issues
 
-- ⚠️ **`conky.exe` cannot start at all without `nvml.dll` present** (no NVIDIA
-  driver) — `3rdparty/nvml`'s import library makes `nvml.dll` a hard, eager
-  PE import, not the lazy/optional dependency `nvidia_nvml.cc:90`'s
-  `LoadLibraryA` check assumes. Found 2026-09-15 when CI's test binary
-  (same `conky_core`) failed to launch on a GPU-less GitHub Actions runner —
-  nothing had ever actually *executed* the built binary in CI before (only
-  file-existence checks). CI now builds with `-DBUILD_NVIDIA_NVML=OFF` until
-  this is fixed properly (dynamic `GetProcAddress` loading or verified
-  delay-load); local dev builds with NVML ON are unaffected. See issue #4.
+- ✅ **`nvml.dll` hard-dependency at startup — fixed.** `conky.exe` used to be
+  unable to start at all without an NVIDIA driver present (`3rdparty/nvml`'s
+  import library made `nvml.dll` a hard, eager PE import). Found 2026-09-15
+  when CI's test binary failed to launch on a GPU-less GitHub Actions runner
+  — nothing had ever actually *executed* the built binary in CI before (only
+  file-existence checks). Fixed by resolving every NVML symbol
+  `nvidia_nvml.cc` uses dynamically at runtime (`LoadLibraryA`/
+  `GetProcAddress`) instead of linking the import library — CMake now links
+  `nvml_headers` (types only, `3rdparty/nvml/CMakeLists.txt`) on Windows
+  rather than `nvml`. Verified: `objdump -p` no longer lists `nvml.dll` in
+  the import table, and real NVML data still resolves correctly on the dev
+  machine (RTX 3070 Ti). See issue #4 for the full writeup; CI's "Run tests"
+  step (which actually executes the binary on a GPU-less runner) is the
+  regression check for this going forward.
 - GDI `CopyFromScreen` cannot reliably capture layered window content;
   `PrintWindow` with `PW_RENDERFULLCONTENT` works
 - GDI drawing functions (`FillRect`, `DrawText`) don't write alpha channel;

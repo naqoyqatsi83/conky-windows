@@ -57,8 +57,18 @@ set(conky_libs ${conky_libs} spdlog::spdlog)
 set(conky_includes ${conky_includes} "${CMAKE_SOURCE_DIR}/3rdparty/Vc")
 
 if(BUILD_NVIDIA_NVML)
-  # The nvml target carries its include dir as an INTERFACE property.
-  set(conky_libs ${conky_libs} nvml)
+  if(WIN32)
+    # nvml_headers exposes only the headers/version define, not a linked
+    # import library — src/data/hardware/nvidia_nvml.cc resolves nvml.dll's
+    # symbols dynamically at runtime instead, so nvml.dll is a genuine
+    # optional dependency rather than a hard PE import that prevents
+    # conky.exe from starting at all without an NVIDIA driver installed.
+    # See conky-windows issue #4.
+    set(conky_libs ${conky_libs} nvml_headers)
+  else()
+    # The nvml target carries its include dir as an INTERFACE property.
+    set(conky_libs ${conky_libs} nvml)
+  endif()
 endif(BUILD_NVIDIA_NVML)
 
 # Finally, add some code

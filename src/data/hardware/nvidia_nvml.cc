@@ -54,6 +54,184 @@
 
 void init_nvml();
 
+// NVML's Windows redistributable stub (3rdparty/nvml) links as a standard
+// eager PE import if you `target_link_libraries` against it directly — that
+// makes nvml.dll a hard dependency the OS loader resolves before any of the
+// program's own code runs, so conky.exe can't even start on a machine with
+// no NVIDIA driver installed (see conky-windows issue #4). Resolve every
+// NVML symbol this file uses via LoadLibraryA/GetProcAddress instead (dlopen
+// /dlsym on non-Windows, matching the existing nvml_error_string pattern
+// this replaces), so nvml.dll becomes a genuine optional runtime dependency.
+// CMake links `nvml_headers` (types/macros only, see 3rdparty/nvml/
+// CMakeLists.txt) rather than `nvml` on Windows so there's no import library
+// to accidentally pull the eager dependency back in.
+namespace {
+
+struct NvmlApi {
+  using ErrorString_fn = const char* (*)(nvmlReturn_t);
+  using Init_v2_fn = nvmlReturn_t (*)(void);
+  using Shutdown_fn = nvmlReturn_t (*)(void);
+  using SystemGetDriverVersion_fn = nvmlReturn_t (*)(char*, unsigned int);
+  using SystemGetNVMLVersion_fn = nvmlReturn_t (*)(char*, unsigned int);
+  using DeviceGetCount_v2_fn = nvmlReturn_t (*)(unsigned int*);
+  using DeviceGetHandleByIndex_v2_fn = nvmlReturn_t (*)(unsigned int,
+                                                        nvmlDevice_t*);
+  using DeviceGetName_fn = nvmlReturn_t (*)(nvmlDevice_t, char*,
+                                            unsigned int);
+  using DeviceGetSupportedPerformanceStates_fn =
+      nvmlReturn_t (*)(nvmlDevice_t, nvmlPstates_t*, unsigned int);
+  using DeviceGetTemperatureThreshold_fn =
+      nvmlReturn_t (*)(nvmlDevice_t, nvmlTemperatureThresholds_t,
+                       unsigned int*);
+  using DeviceGetMinMaxClockOfPState_fn =
+      nvmlReturn_t (*)(nvmlDevice_t, nvmlClockType_t, nvmlPstates_t,
+                       unsigned int*, unsigned int*);
+  using DeviceGetMemoryInfo_v2_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                      nvmlMemory_v2_t*);
+  using DeviceGetTemperature_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                    nvmlTemperatureSensors_t,
+                                                    unsigned int*);
+  using DeviceGetClock_fn = nvmlReturn_t (*)(nvmlDevice_t, nvmlClockType_t,
+                                             nvmlClockId_t, unsigned int*);
+  using DeviceGetDecoderUtilization_fn =
+      nvmlReturn_t (*)(nvmlDevice_t, unsigned int*, unsigned int*);
+  using DeviceGetEncoderUtilization_fn =
+      nvmlReturn_t (*)(nvmlDevice_t, unsigned int*, unsigned int*);
+  using DeviceGetPcieThroughput_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                       nvmlPcieUtilCounter_t,
+                                                       unsigned int*);
+  using DeviceGetUtilizationRates_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                         nvmlUtilization_t*);
+  using DeviceGetPerformanceState_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                         nvmlPstates_t*);
+  using DeviceGetFanSpeedRPM_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                    nvmlFanSpeedInfo_t*);
+  using DeviceGetFanSpeed_v2_fn = nvmlReturn_t (*)(nvmlDevice_t, unsigned int,
+                                                    unsigned int*);
+  using DeviceGetNumFans_fn = nvmlReturn_t (*)(nvmlDevice_t, unsigned int*);
+  using DeviceGetArchitecture_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                     nvmlDeviceArchitecture_t*);
+  using DeviceGetFieldValues_fn = nvmlReturn_t (*)(nvmlDevice_t, int,
+                                                    nvmlFieldValue_t*);
+  using DeviceGetMarginTemperature_fn =
+      nvmlReturn_t (*)(nvmlDevice_t, nvmlMarginTemperature_t*);
+  using DeviceGetTemperatureV_fn = nvmlReturn_t (*)(nvmlDevice_t,
+                                                     nvmlTemperature_t*);
+
+  ErrorString_fn ErrorString = nullptr;
+  Init_v2_fn Init_v2 = nullptr;
+  Shutdown_fn Shutdown = nullptr;
+  SystemGetDriverVersion_fn SystemGetDriverVersion = nullptr;
+  SystemGetNVMLVersion_fn SystemGetNVMLVersion = nullptr;
+  DeviceGetCount_v2_fn DeviceGetCount_v2 = nullptr;
+  DeviceGetHandleByIndex_v2_fn DeviceGetHandleByIndex_v2 = nullptr;
+  DeviceGetName_fn DeviceGetName = nullptr;
+  DeviceGetSupportedPerformanceStates_fn DeviceGetSupportedPerformanceStates =
+      nullptr;
+  DeviceGetTemperatureThreshold_fn DeviceGetTemperatureThreshold = nullptr;
+  DeviceGetMinMaxClockOfPState_fn DeviceGetMinMaxClockOfPState = nullptr;
+  DeviceGetMemoryInfo_v2_fn DeviceGetMemoryInfo_v2 = nullptr;
+  DeviceGetTemperature_fn DeviceGetTemperature = nullptr;
+  DeviceGetClock_fn DeviceGetClock = nullptr;
+  DeviceGetDecoderUtilization_fn DeviceGetDecoderUtilization = nullptr;
+  DeviceGetEncoderUtilization_fn DeviceGetEncoderUtilization = nullptr;
+  DeviceGetPcieThroughput_fn DeviceGetPcieThroughput = nullptr;
+  DeviceGetUtilizationRates_fn DeviceGetUtilizationRates = nullptr;
+  DeviceGetPerformanceState_fn DeviceGetPerformanceState = nullptr;
+  DeviceGetFanSpeedRPM_fn DeviceGetFanSpeedRPM = nullptr;
+  DeviceGetFanSpeed_v2_fn DeviceGetFanSpeed_v2 = nullptr;
+  DeviceGetNumFans_fn DeviceGetNumFans = nullptr;
+  DeviceGetArchitecture_fn DeviceGetArchitecture = nullptr;
+  DeviceGetFieldValues_fn DeviceGetFieldValues = nullptr;
+  DeviceGetMarginTemperature_fn DeviceGetMarginTemperature = nullptr;
+  DeviceGetTemperatureV_fn DeviceGetTemperatureV = nullptr;
+
+  bool loaded = false;
+  bool load_attempted = false;
+};
+
+NvmlApi g_nvml;
+
+#ifdef _WIN32
+template <typename Fn>
+void resolve(HMODULE handle, const char* name, Fn* out) {
+  *out = reinterpret_cast<Fn>(
+      reinterpret_cast<void*>(GetProcAddress(handle, name)));
+}
+#else
+template <typename Fn>
+void resolve(void* handle, const char* name, Fn* out) {
+  *out = reinterpret_cast<Fn>(dlsym(handle, name));
+}
+#endif
+
+// Load nvml.dll (libnvidia-ml.so.1) and resolve every symbol this file
+// needs. Safe to call repeatedly — only the first call does any work.
+// Returns whether the minimum set of symbols needed to do anything useful
+// resolved successfully.
+bool load_nvml_api() {
+  if (g_nvml.load_attempted) return g_nvml.loaded;
+  g_nvml.load_attempted = true;
+
+#ifdef _WIN32
+  HMODULE handle = LoadLibraryA("nvml.dll");
+#else
+  void* handle = dlopen("libnvidia-ml.so.1", RTLD_LAZY);
+#endif
+  if (handle == nullptr) return false;
+
+  resolve(handle, "nvmlErrorString", &g_nvml.ErrorString);
+  resolve(handle, "nvmlInit_v2", &g_nvml.Init_v2);
+  resolve(handle, "nvmlShutdown", &g_nvml.Shutdown);
+  resolve(handle, "nvmlSystemGetDriverVersion",
+          &g_nvml.SystemGetDriverVersion);
+  resolve(handle, "nvmlSystemGetNVMLVersion", &g_nvml.SystemGetNVMLVersion);
+  resolve(handle, "nvmlDeviceGetCount_v2", &g_nvml.DeviceGetCount_v2);
+  // nvml.h #defines the unversioned nvmlDeviceGetHandleByIndex to this —
+  // the short name isn't an exported symbol on its own.
+  resolve(handle, "nvmlDeviceGetHandleByIndex_v2",
+          &g_nvml.DeviceGetHandleByIndex_v2);
+  resolve(handle, "nvmlDeviceGetName", &g_nvml.DeviceGetName);
+  resolve(handle, "nvmlDeviceGetSupportedPerformanceStates",
+          &g_nvml.DeviceGetSupportedPerformanceStates);
+  resolve(handle, "nvmlDeviceGetTemperatureThreshold",
+          &g_nvml.DeviceGetTemperatureThreshold);
+  resolve(handle, "nvmlDeviceGetMinMaxClockOfPState",
+          &g_nvml.DeviceGetMinMaxClockOfPState);
+  resolve(handle, "nvmlDeviceGetMemoryInfo_v2",
+          &g_nvml.DeviceGetMemoryInfo_v2);
+  resolve(handle, "nvmlDeviceGetTemperature", &g_nvml.DeviceGetTemperature);
+  resolve(handle, "nvmlDeviceGetClock", &g_nvml.DeviceGetClock);
+  resolve(handle, "nvmlDeviceGetDecoderUtilization",
+          &g_nvml.DeviceGetDecoderUtilization);
+  resolve(handle, "nvmlDeviceGetEncoderUtilization",
+          &g_nvml.DeviceGetEncoderUtilization);
+  resolve(handle, "nvmlDeviceGetPcieThroughput",
+          &g_nvml.DeviceGetPcieThroughput);
+  resolve(handle, "nvmlDeviceGetUtilizationRates",
+          &g_nvml.DeviceGetUtilizationRates);
+  resolve(handle, "nvmlDeviceGetPerformanceState",
+          &g_nvml.DeviceGetPerformanceState);
+  resolve(handle, "nvmlDeviceGetFanSpeedRPM", &g_nvml.DeviceGetFanSpeedRPM);
+  resolve(handle, "nvmlDeviceGetFanSpeed_v2", &g_nvml.DeviceGetFanSpeed_v2);
+  resolve(handle, "nvmlDeviceGetNumFans", &g_nvml.DeviceGetNumFans);
+  resolve(handle, "nvmlDeviceGetArchitecture", &g_nvml.DeviceGetArchitecture);
+  resolve(handle, "nvmlDeviceGetFieldValues", &g_nvml.DeviceGetFieldValues);
+  resolve(handle, "nvmlDeviceGetMarginTemperature",
+          &g_nvml.DeviceGetMarginTemperature);
+  resolve(handle, "nvmlDeviceGetTemperatureV", &g_nvml.DeviceGetTemperatureV);
+
+  // Minimum needed to initialize and enumerate GPUs at all; the rest
+  // (per-device queries) degrade individually via their own NVML_ERROR
+  // handling if a given symbol is missing on an older driver.
+  g_nvml.loaded = g_nvml.Init_v2 != nullptr && g_nvml.Shutdown != nullptr &&
+                  g_nvml.DeviceGetCount_v2 != nullptr &&
+                  g_nvml.DeviceGetHandleByIndex_v2 != nullptr;
+  return g_nvml.loaded;
+}
+
+}  // namespace
+
 struct nvml_init {
   bool init_attempted = false;
   bool is_init = false;
@@ -80,26 +258,14 @@ struct nvml_init {
 static nvml_init init{};
 
 // The bundled NVML stub ships its own nvmlErrorString that returns a multi-line
-// loader banner for codes it doesn't recognize. Resolve the real implementation
-// from the installed driver's library at runtime instead (it's already loaded
-// for the data queries), falling back to the raw error code if it can't be found.
+// loader banner for codes it doesn't recognize. Use the installed driver's
+// real implementation instead (resolved once by load_nvml_api(), already
+// called by every code path that could produce an nvmlReturn_t to pass in
+// here), falling back to the raw error code if it isn't available.
 static std::string nvml_error_string(nvmlReturn_t ret) {
-  using error_string_fn = const char* (*)(nvmlReturn_t);
-  static error_string_fn real_error_string = []() -> error_string_fn {
-#ifdef _WIN32
-    HMODULE handle = LoadLibraryA("nvml.dll");
-    if (handle == nullptr) { return nullptr; }
-    return reinterpret_cast<error_string_fn>(
-        GetProcAddress(handle, "nvmlErrorString"));
-#else
-    void* handle = dlopen("libnvidia-ml.so.1", RTLD_LAZY);
-    if (handle == nullptr) { return nullptr; }
-    return reinterpret_cast<error_string_fn>(dlsym(handle, "nvmlErrorString"));
-#endif
-  }();
-
-  if (real_error_string != nullptr) {
-    const char* msg = real_error_string(ret);
+  load_nvml_api();
+  if (g_nvml.ErrorString != nullptr) {
+    const char* msg = g_nvml.ErrorString(ret);
     if (msg != nullptr) { return msg; }
   }
   return fmt::format("NVML error code {}", static_cast<int>(ret));
@@ -111,7 +277,12 @@ void init_nvml() {
   if (init.init_attempted) return;
   init.init_attempted = true;
 
-  auto ret = nvmlInit_v2();
+  if (!load_nvml_api()) {
+    LOG_DEBUG("nvml.dll not found — NVIDIA GPU stats unavailable");
+    return;
+  }
+
+  auto ret = g_nvml.Init_v2();
   if (ret != NVML_SUCCESS) {
     LOG_ERROR("Unable to initialize NVML: {}", nvml_error_string(ret));
     return;
@@ -121,7 +292,7 @@ void init_nvml() {
   constexpr unsigned int dvsize = NVML_SYSTEM_DRIVER_VERSION_BUFFER_SIZE;
   init.driver_version.resize(dvsize, 0);
 
-  ret = nvmlSystemGetDriverVersion(init.driver_version.data(), dvsize);
+  ret = g_nvml.SystemGetDriverVersion(init.driver_version.data(), dvsize);
   if (ret != NVML_SUCCESS) {
     LOG_WARNING("Unable to get NVIDIA driver version: {}",
                 nvml_error_string(ret));
@@ -133,7 +304,7 @@ void init_nvml() {
   constexpr unsigned int nvmlsize = NVML_SYSTEM_NVML_VERSION_BUFFER_SIZE;
   init.nvml_version.resize(nvmlsize, 0);
 
-  ret = nvmlSystemGetNVMLVersion(init.nvml_version.data(), nvmlsize);
+  ret = g_nvml.SystemGetNVMLVersion(init.nvml_version.data(), nvmlsize);
   if (ret != NVML_SUCCESS) {
     LOG_WARNING("Unable to get NVML version: {}", nvml_error_string(ret));
     return;
@@ -143,7 +314,7 @@ void init_nvml() {
                  "NVML version is {}", init.nvml_version);
 
   unsigned int count = 0;
-  ret = nvmlDeviceGetCount_v2(&count);
+  ret = g_nvml.DeviceGetCount_v2(&count);
   if (ret != NVML_SUCCESS) {
     LOG_WARNING("Unable to get number of GPUs: {}", nvml_error_string(ret));
     return;
@@ -156,7 +327,7 @@ void init_nvml() {
 
 std::unique_ptr<Device> Device::create(unsigned int gpu_index) {
   nvmlDevice_t d = nullptr;
-  auto ret = nvmlDeviceGetHandleByIndex(gpu_index, &d);
+  auto ret = g_nvml.DeviceGetHandleByIndex_v2(gpu_index, &d);
   if (ret != NVML_SUCCESS) {
     LOG_DEBUG("Unable to get device for GPU {}", gpu_index);
     return nullptr;
@@ -190,7 +361,7 @@ void Device::query_model_name() {
   this->model_name.value.resize(size, 0);
 
   auto ret =
-      nvmlDeviceGetName(this->device, this->model_name.value.data(), size);
+      g_nvml.DeviceGetName(this->device, this->model_name.value.data(), size);
   this->model_name.set_queried();
   this->model_name.is_supported = ret == NVML_SUCCESS;
 
@@ -212,7 +383,7 @@ void Device::query_pstate_min_max() {
 
   // The size argument needs to be in bytes
   auto byte_size = size * sizeof(nvmlPstates_t);
-  auto ret = nvmlDeviceGetSupportedPerformanceStates(this->device,
+  auto ret = g_nvml.DeviceGetSupportedPerformanceStates(this->device,
                                                      states.data(), byte_size);
   if (ret != NVML_SUCCESS) {
     this->pstate_min.set_unsupported();
@@ -277,8 +448,8 @@ void Device::query_max_temps() {
   };
   nvmlMarginTemperature_t query_margin = {.version = nvmlMarginTemperature_v1};
 
-  auto temp_ret = nvmlDeviceGetTemperatureV(this->device, &query_temp);
-  auto margin_ret = nvmlDeviceGetMarginTemperature(this->device, &query_margin);
+  auto temp_ret = g_nvml.DeviceGetTemperatureV(this->device, &query_temp);
+  auto margin_ret = g_nvml.DeviceGetMarginTemperature(this->device, &query_margin);
   if (temp_ret != NVML_SUCCESS || margin_ret != NVML_SUCCESS) {
     // Pre-Ada GPUs (e.g. Turing) don't expose margin/TLIMIT values. Fall back
     // to the absolute thresholds, which lack the mem/gpu-freq domains.
@@ -300,7 +471,7 @@ void Device::query_max_temps() {
       {.fieldId = NVML_FI_DEV_TEMPERATURE_GPU_MAX_TLIMIT},   // gpu_max_tlimit
   };
 
-  auto ret = nvmlDeviceGetFieldValues(this->device, 4, queries);
+  auto ret = g_nvml.DeviceGetFieldValues(this->device, 4, queries);
   if (ret != NVML_SUCCESS) {
     this->query_max_temps_fail_with_info(ret, "Unable to get TLIMIT values");
     return;
@@ -356,7 +527,7 @@ void Device::query_max_temps() {
 void Device::query_temp_thresholds() {
   unsigned int temp = 0;
 
-  auto ret = nvmlDeviceGetTemperatureThreshold(
+  auto ret = g_nvml.DeviceGetTemperatureThreshold(
       this->device, NVML_TEMPERATURE_THRESHOLD_SHUTDOWN, &temp);
   if (ret == NVML_SUCCESS) {
     this->gpu_shutdown_temp.set(static_cast<int>(temp));
@@ -365,7 +536,7 @@ void Device::query_temp_thresholds() {
     this->gpu_shutdown_temp.set_unsupported();
   }
 
-  ret = nvmlDeviceGetTemperatureThreshold(
+  ret = g_nvml.DeviceGetTemperatureThreshold(
       this->device, NVML_TEMPERATURE_THRESHOLD_SLOWDOWN, &temp);
   if (ret == NVML_SUCCESS) {
     this->gpu_slowdown_temp.set(static_cast<int>(temp));
@@ -388,7 +559,7 @@ void Device::get_min_max_clocks(nvmlClockType_t clock,
   unsigned int max = 0;
 
   // The min frequency is the min for pstate_min
-  auto ret = nvmlDeviceGetMinMaxClockOfPState(
+  auto ret = g_nvml.DeviceGetMinMaxClockOfPState(
       this->device, clock, this->pstate_min.value, &min, &max);
   if (ret != NVML_SUCCESS) {
     LOG_DEBUG("{} is unsupported: {}", min_name, nvml_error_string(ret));
@@ -401,7 +572,7 @@ void Device::get_min_max_clocks(nvmlClockType_t clock,
   // The max frequency is the max for pstate_max
   min = 0;
   max = 0;
-  ret = nvmlDeviceGetMinMaxClockOfPState(this->device, clock,
+  ret = g_nvml.DeviceGetMinMaxClockOfPState(this->device, clock,
                                          this->pstate_max.value, &min, &max);
   if (ret != NVML_SUCCESS) {
     LOG_DEBUG("{} is unsupported: {}", max_name, nvml_error_string(ret));
@@ -455,7 +626,7 @@ void Device::query_power_limit() {
   if (this->power_limit.was_queried) { return; }
 
   nvmlFieldValue_t query = {.fieldId = NVML_FI_DEV_POWER_CURRENT_LIMIT};
-  auto ret = nvmlDeviceGetFieldValues(this->device, 1, &query);
+  auto ret = g_nvml.DeviceGetFieldValues(this->device, 1, &query);
   // nvmlDeviceGetFieldValues can return NVML_SUCCESS overall while reporting a
   // per-field error (e.g. the field is unknown to an older driver), in which
   // case query.value is undefined. Check both.
@@ -487,7 +658,7 @@ void Device::query_num_fans() {
   if (this->num_fans.was_queried) { return; }
 
   unsigned int count = 0;
-  auto ret = nvmlDeviceGetNumFans(this->device, &count);
+  auto ret = g_nvml.DeviceGetNumFans(this->device, &count);
   if (ret != NVML_SUCCESS) {
     // Treat an unqueryable fan count as "no fan" so the live getters skip the
     // per-tick query (which would otherwise return INVALID_ARGUMENT).
@@ -503,7 +674,7 @@ void Device::query_num_fans() {
 
 Device::MemInfo Device::get_mem_info() const {
   nvmlMemory_v2_t query = {.version = nvmlMemory_v2};
-  auto status = nvmlDeviceGetMemoryInfo_v2(this->device, &query);
+  auto status = g_nvml.DeviceGetMemoryInfo_v2(this->device, &query);
 
   return {
       .status = status,
@@ -522,7 +693,7 @@ int Device::get_gpu_temp() const {
       .version = nvmlTemperature_v1,
       .sensorType = NVML_TEMPERATURE_GPU,
   };
-  if (nvmlDeviceGetTemperatureV(this->device, &query_temp) == NVML_SUCCESS) {
+  if (g_nvml.DeviceGetTemperatureV(this->device, &query_temp) == NVML_SUCCESS) {
     return query_temp.temperature;
   }
 #endif
@@ -534,7 +705,7 @@ int Device::get_gpu_temp() const {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   auto ret =
-      nvmlDeviceGetTemperature(this->device, NVML_TEMPERATURE_GPU, &temp);
+      g_nvml.DeviceGetTemperature(this->device, NVML_TEMPERATURE_GPU, &temp);
 #pragma GCC diagnostic pop
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
@@ -558,7 +729,7 @@ unsigned int Device::get_clock_freq(nvmlClockType_t clock,
 
   unsigned int freq = 0;
   auto ret =
-      nvmlDeviceGetClock(this->device, clock, NVML_CLOCK_ID_CURRENT, &freq);
+      g_nvml.DeviceGetClock(this->device, clock, NVML_CLOCK_ID_CURRENT, &freq);
   if (ret != NVML_SUCCESS) {
     if (!*did_warn) {
       auto name = names[static_cast<size_t>(clock)];
@@ -593,7 +764,7 @@ unsigned int Device::get_video_freq() const {
 unsigned int Device::get_video_dec_util() const {
   unsigned int util = 0;
   unsigned int sampling = 0;
-  auto ret = nvmlDeviceGetDecoderUtilization(this->device, &util, &sampling);
+  auto ret = g_nvml.DeviceGetDecoderUtilization(this->device, &util, &sampling);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -608,7 +779,7 @@ unsigned int Device::get_video_dec_util() const {
 unsigned int Device::get_video_enc_util() const {
   unsigned int util = 0;
   unsigned int sampling = 0;
-  auto ret = nvmlDeviceGetEncoderUtilization(this->device, &util, &sampling);
+  auto ret = g_nvml.DeviceGetEncoderUtilization(this->device, &util, &sampling);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -622,7 +793,7 @@ unsigned int Device::get_video_enc_util() const {
 
 unsigned int Device::get_pcie_throughput_tx() const {
   unsigned int tx;
-  auto ret = nvmlDeviceGetPcieThroughput(this->device, NVML_PCIE_UTIL_TX_BYTES, &tx);
+  auto ret = g_nvml.DeviceGetPcieThroughput(this->device, NVML_PCIE_UTIL_TX_BYTES, &tx);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -636,7 +807,7 @@ unsigned int Device::get_pcie_throughput_tx() const {
 
 unsigned int Device::get_pcie_throughput_rx() const {
   unsigned int rx;
-  auto ret = nvmlDeviceGetPcieThroughput(this->device, NVML_PCIE_UTIL_RX_BYTES, &rx);
+  auto ret = g_nvml.DeviceGetPcieThroughput(this->device, NVML_PCIE_UTIL_RX_BYTES, &rx);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -650,7 +821,7 @@ unsigned int Device::get_pcie_throughput_rx() const {
 
 unsigned int Device::get_gpu_util() const {
   nvmlUtilization_t util = {};
-  auto ret = nvmlDeviceGetUtilizationRates(this->device, &util);
+  auto ret = g_nvml.DeviceGetUtilizationRates(this->device, &util);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -664,7 +835,7 @@ unsigned int Device::get_gpu_util() const {
 
 nvmlPstates_t Device::get_pstate() const {
   nvmlPstates_t pstate = NVML_PSTATE_UNKNOWN;
-  auto ret = nvmlDeviceGetPerformanceState(this->device, &pstate);
+  auto ret = g_nvml.DeviceGetPerformanceState(this->device, &pstate);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -690,7 +861,7 @@ unsigned int Device::get_fan_speed() const {
       .version = nvmlFanSpeedInfo_v1,
       .fan = 0,
   };
-  auto ret = nvmlDeviceGetFanSpeedRPM(this->device, &info);
+  auto ret = g_nvml.DeviceGetFanSpeedRPM(this->device, &info);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -715,7 +886,7 @@ unsigned int Device::get_fan_level() const {
   if (this->num_fans.value == 0) { return 0; }
 
   unsigned int level = 0;
-  auto ret = nvmlDeviceGetFanSpeed_v2(this->device, 0, &level);
+  auto ret = g_nvml.DeviceGetFanSpeed_v2(this->device, 0, &level);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -729,7 +900,7 @@ unsigned int Device::get_fan_level() const {
 
 unsigned int Device::get_power_one_sec_avg() const {
   nvmlFieldValue_t query = {.fieldId = NVML_FI_DEV_POWER_AVERAGE};
-  auto ret = nvmlDeviceGetFieldValues(this->device, 1, &query);
+  auto ret = g_nvml.DeviceGetFieldValues(this->device, 1, &query);
   if (ret == NVML_SUCCESS) { ret = query.nvmlReturn; }
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
@@ -746,7 +917,7 @@ unsigned int Device::get_power_one_sec_avg() const {
 
 unsigned int Device::get_power_instant() const {
   nvmlFieldValue_t query = {.fieldId = NVML_FI_DEV_POWER_INSTANT};
-  auto ret = nvmlDeviceGetFieldValues(this->device, 1, &query);
+  auto ret = g_nvml.DeviceGetFieldValues(this->device, 1, &query);
   if (ret == NVML_SUCCESS) { ret = query.nvmlReturn; }
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
@@ -784,7 +955,7 @@ const char* Device::get_architecture_name() const {
   };
 
   nvmlDeviceArchitecture_t arch = 0;
-  auto ret = nvmlDeviceGetArchitecture(this->device, &arch);
+  auto ret = g_nvml.DeviceGetArchitecture(this->device, &arch);
   if (ret != NVML_SUCCESS) {
     static bool did_warn = false;
     if (!did_warn) {
@@ -806,7 +977,7 @@ const char* Device::get_architecture_name() const {
 
 void shutdown_nvml() {
   if (init.is_init) {
-    (void)nvmlShutdown();
+    (void)g_nvml.Shutdown();
     init.is_init = false;
     init.init_attempted = false;
     init.driver_version = "";
