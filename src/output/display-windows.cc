@@ -815,8 +815,21 @@ void display_output_windows::resize_to_content() {
 
 /* SIGSEGV recovery: setjmp/longjmp around the update/draw cycle.
  * If GDI or graph drawing causes an access violation, we longjmp back
- * to the main loop and continue. The next iteration re-creates the DIB. */
+ * to the main loop and continue. The next iteration re-creates the DIB.
+ *
+ * g_draw_stage is a coarse breadcrumb, updated right before each stage of
+ * the cycle below, so a recovery log at least says which phase faulted —
+ * standard signal(SIGSEGV, ...) handlers don't get siginfo/the faulting
+ * address on this MinGW runtime (verified empirically: a real access
+ * violation triggers the handler fine, but there's no portable way to read
+ * back where it happened from inside a plain `void handler(int)`), so this
+ * is the cheapest diagnostic available without switching to a
+ * SetUnhandledExceptionFilter-based SEH handler (conky_crash_handler above
+ * already is one, for exceptions this signal handler doesn't intercept
+ * first — see the investigation this is part of, conky-windows issue #1). */
 static jmp_buf crash_jmp;
+static const char* g_draw_stage = "none";
+static unsigned int g_recovery_count = 0;
 namespace {
 extern "C" void sigsegv_recovery(int) {
   longjmp(crash_jmp, 1);
@@ -849,13 +862,41 @@ bool display_output_windows::main_loop_wait(double t) {
       try {
         if (setjmp(crash_jmp) == 0) {
           signal(SIGSEGV, sigsegv_recovery);
+          g_draw_stage = "update_text";
           update_text();
+          g_draw_stage = "update_text_area";
           update_text_area();
+          g_draw_stage = "resize_to_content";
           resize_to_content();
+          g_draw_stage = "draw_stuff";
           draw_stuff();
+          g_draw_stage = "none";
           signal(SIGSEGV, SIG_DFL);
         } else {
-          LOG_ERROR("*** RECOVERED from SIGSEGV in update/draw cycle ***");
+          ++g_recovery_count;
+          LOG_ERROR(
+              "*** RECOVERED from SIGSEGV in update/draw cycle (stage: {}, "
+              "recovery #{} this run) ***",
+              g_draw_stage, g_recovery_count);
+
+          /* Tolerate a rare, one-off fault (the access violation itself
+           * can't corrupt memory it never got to write — the MMU traps it
+           * first — but the operation that faulted may have left a data
+           * structure half-updated, and the longjmp skips whatever
+           * destructors would have run). Repeated recoveries mean that risk
+           * is compounding and/or this is a systematic bug rather than a
+           * fluke, so stop tolerating and fail loudly instead of degrading
+           * silently forever. See conky-windows issue #1. */
+          constexpr unsigned int kMaxRecoveries = 10;
+          if (g_recovery_count >= kMaxRecoveries) {
+            LOG_ERROR(
+                "*** {} SIGSEGV recoveries this run — treating as a "
+                "systematic bug, not transient noise. Exiting instead of "
+                "continuing to degrade silently. Check the log above for "
+                "which draw stage(s) faulted. ***",
+                g_recovery_count);
+            ExitProcess(1);
+          }
         }
       } catch (std::exception &e) {
         LOG_ERROR("Unhandled C++ exception in update cycle: {}", e.what());

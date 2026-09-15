@@ -1107,10 +1107,19 @@ static inline void draw_graph_bars(special_node *current,
   }
   if (current->colours_set) {
     if (current->tempgrad != 0) {
-      set_foreground_color(tmpcolour[static_cast<int>(
+      /* Unlike colour_idx (a simple counter, implicitly bounded by the
+       * j/graph_data.size() check above), this index is computed from
+       * graph_data[j]'s value — a negative value or an unusual scale can
+       * push it outside tmpcolour's allocated range. Clamp rather than
+       * trust the arithmetic: tmpcolour has `w` entries (see
+       * gradient_factory::create_gradient(), sized from the same `w`
+       * passed to create_gradient_factory() by our caller). */
+      int grad_idx = static_cast<int>(
           static_cast<float>(w - 2) -
           current->graph_data[j] * (w - 2) /
-              std::max(static_cast<float>(current->scale), 1.0F))]);
+              std::max(static_cast<float>(current->scale), 1.0F));
+      grad_idx = std::clamp(grad_idx, 0, w - 1);
+      set_foreground_color(tmpcolour[grad_idx]);
     } else {
       set_foreground_color(tmpcolour[colour_idx++]);
     }

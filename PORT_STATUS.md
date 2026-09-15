@@ -58,6 +58,30 @@
 
 ## Known Issues
 
+- ✅ **setjmp/longjmp SIGSEGV recovery investigated — a second real bug found
+  and fixed, mechanism kept with escalation.** `display-windows.cc`'s draw
+  cycle has a `setjmp`/`longjmp` handler that survives an access violation
+  and continues running (added in `8bdcd54e` alongside a real fix: a missing
+  bounds check on `graph_data[j]` in `draw_graph_bars`, `src/conky.cc`).
+  Investigated 2026-09-15 (issue #1): found a **second, still-unguarded**
+  out-of-bounds access in the same function — the temperature-gradient
+  (`-t` flag) color-index calculation was computed from `graph_data[j]`'s
+  value with no clamping, unlike the adjacent `colour_idx` counter, and
+  could index `tmpcolour[]` out of bounds for negative or unusually-scaled
+  values. Not exercised by the current live theme (no graph uses `-t`), so
+  unlikely to be the same crash already investigated, but a real latent bug
+  — fixed with a `std::clamp`. Verified the recovery mechanism does
+  genuinely work on this MinGW toolchain (a deliberate null-pointer fault
+  recovers cleanly) via a standalone repro, then soak-tested 30+ minutes at
+  20 updates/sec against `-t` graphs specifically (the previously-unguarded
+  path) with zero recoveries. Kept the mechanism (a desktop widget
+  reasonably favors surviving a rare blip over vanishing outright, and an
+  access violation on an unmapped page can't itself corrupt memory — the
+  MMU traps the write before it happens), but hardened it: added a
+  draw-stage breadcrumb + recovery counter to the log, and an escalation
+  that exits the process (rather than continuing to degrade silently
+  forever) after 10 recoveries in one run, treating repeated faults as a
+  systematic bug rather than transient noise.
 - ✅ **`nvml.dll` hard-dependency at startup — fixed.** `conky.exe` used to be
   unable to start at all without an NVIDIA driver present (`3rdparty/nvml`'s
   import library made `nvml.dll` a hard, eager PE import). Found 2026-09-15
