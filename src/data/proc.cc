@@ -282,6 +282,7 @@ void print_pid_environ_list(struct text_object *obj, char *p,
   }
 }
 
+#ifndef _WIN32
 void print_pid_exe(struct text_object *obj, char *p, unsigned int p_max_size) {
   std::ostringstream pathstream;
   std::unique_ptr<char[]> objbuf(new char[max_user_text.get(*state)]);
@@ -290,6 +291,7 @@ void print_pid_exe(struct text_object *obj, char *p, unsigned int p_max_size) {
   pathstream << PROCDIR "/" << objbuf.get() << "/exe";
   pid_readlink(pathstream.str().c_str(), p, p_max_size);
 }
+#endif /* _WIN32 -- see src/data/os/windows.cc for the Windows version */
 
 void print_pid_nice(struct text_object *obj, char *p, unsigned int p_max_size) {
   char *buf = nullptr;
@@ -392,6 +394,7 @@ void print_pid_parent(struct text_object *obj, char *p,
   }
 }
 
+#ifndef _WIN32
 void print_pid_priority(struct text_object *obj, char *p,
                         unsigned int p_max_size) {
   char *buf = nullptr;
@@ -418,10 +421,12 @@ void print_pid_priority(struct text_object *obj, char *p,
     LOG_ERROR("$pid_priority did not receive an argument");
   }
 }
+#endif /* _WIN32 -- see src/data/os/windows.cc for the Windows version */
 
+#define STATE_ENTRY "State:\t"
+#ifndef _WIN32
 void print_pid_state(struct text_object *obj, char *p,
                      unsigned int p_max_size) {
-#define STATE_ENTRY "State:\t"
   char *begin, *end, *buf = nullptr;
   int bytes_read;
   std::ostringstream pathstream;
@@ -449,6 +454,7 @@ void print_pid_state(struct text_object *obj, char *p,
     free(buf);
   }
 }
+#endif /* _WIN32 -- see src/data/os/windows.cc for the Windows version */
 
 void print_pid_state_short(struct text_object *obj, char *p,
                            unsigned int p_max_size) {
@@ -576,6 +582,7 @@ void print_cmdline_to_pid(struct text_object *obj, char *p,
   }
 }
 
+#ifndef _WIN32
 void print_pid_threads(struct text_object *obj, char *p,
                        unsigned int p_max_size) {
 #define THREADS_ENTRY "Threads:\t"
@@ -602,6 +609,7 @@ void print_pid_threads(struct text_object *obj, char *p,
     free(buf);
   }
 }
+#endif /* _WIN32 -- see src/data/os/windows.cc for the Windows version */
 
 void print_pid_thread_list(struct text_object *obj, char *p,
                            unsigned int p_max_size) {
@@ -899,6 +907,7 @@ void internal_print_pid_vm(struct text_object *obj, char *p, int p_max_size,
   }
 }
 
+#ifndef _WIN32
 void print_pid_vmpeak(struct text_object *obj, char *p,
                       unsigned int p_max_size) {
   internal_print_pid_vm(
@@ -911,6 +920,7 @@ void print_pid_vmsize(struct text_object *obj, char *p,
   internal_print_pid_vm(obj, p, p_max_size, "VmSize:\t",
                         "Can't find the process virtual memory size in '{}'");
 }
+#endif /* _WIN32 -- see src/data/os/windows.cc for the Windows version */
 
 void print_pid_vmlck(struct text_object *obj, char *p,
                      unsigned int p_max_size) {
@@ -925,11 +935,13 @@ void print_pid_vmhwm(struct text_object *obj, char *p,
       "Can't find the process peak resident set size in '{}'");
 }
 
+#ifndef _WIN32
 void print_pid_vmrss(struct text_object *obj, char *p,
                      unsigned int p_max_size) {
   internal_print_pid_vm(obj, p, p_max_size, "VmRSS:\t",
                         "Can't find the process resident set size in '{}'");
 }
+#endif /* _WIN32 -- see src/data/os/windows.cc for the Windows version */
 
 void print_pid_vmdata(struct text_object *obj, char *p,
                       unsigned int p_max_size) {

@@ -43,12 +43,14 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "../../common.h"
 #include "../../conky.h"
 #include "../../logging.h"
+#include "../proc.h"
 #include "../top.h"
 #include "../network/net_stat.h"
 #include "../hardware/diskio.h"
@@ -1173,4 +1175,168 @@ bool is_conky_already_running(void) {
     return false;
   }
   return GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
+/* ---- pid_* family: the subset with a clean Windows equivalent ----
+ *
+ * The Linux implementations (src/data/proc.cc) all read /proc/<pid>/...
+ * text files; PROCDIR is hardcoded to "/proc" with no Windows branch, so
+ * unlike most of this file these aren't "extend an existing platform
+ * guard" fixes -- proc.cc's versions of the functions below are wrapped
+ * in #ifndef _WIN32 and these replace them. The other ~29 pid_* objects
+ * (uid/gid/environ/cwd/stdin/stdout/stderr/openfiles/...) need admin
+ * rights and undocumented internals to read another process's security
+ * context or open handles on Windows and aren't attempted here. */
+
+namespace {
+/* Every pid_* object's argument is itself a small evaluated text-object
+ * chain (obj->sub), not a plain string -- this mirrors proc.cc's own
+ * pattern of calling generate_text_internal() before parsing the PID. */
+HANDLE open_pid_from_obj(struct text_object *obj, DWORD access) {
+  std::unique_ptr<char[]> buf(new char[max_user_text.get(*state)]);
+  generate_text_internal(buf.get(), max_user_text.get(*state), *obj->sub);
+
+  char *end = nullptr;
+  long pid_value = strtol(buf.get(), &end, 10);
+  if (end == buf.get() || pid_value <= 0) { return nullptr; }
+
+  return OpenProcess(access, FALSE, static_cast<DWORD>(pid_value));
+}
+}  // namespace
+
+void print_pid_exe(struct text_object *obj, char *p, unsigned int p_max_size) {
+  HANDLE h = open_pid_from_obj(
+      obj, PROCESS_QUERY_LIMITED_INFORMATION);
+  if (h == nullptr) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+  DWORD len = p_max_size;
+  if (!QueryFullProcessImageNameA(h, 0, p, &len) && p_max_size > 0) {
+    p[0] = '\0';
+  }
+  CloseHandle(h);
+}
+
+void print_pid_priority(struct text_object *obj, char *p,
+                        unsigned int p_max_size) {
+  HANDLE h = open_pid_from_obj(obj, PROCESS_QUERY_LIMITED_INFORMATION);
+  if (h == nullptr) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+  DWORD cls = GetPriorityClass(h);
+  CloseHandle(h);
+  snprintf(p, p_max_size, "%lu", static_cast<unsigned long>(cls));
+}
+
+void print_pid_state(struct text_object *obj, char *p,
+                     unsigned int p_max_size) {
+  /* Windows doesn't expose Linux-style Running/Sleeping/Zombie states;
+   * this reports the one distinction actually available without deeper
+   * (and much less reliable) undocumented queries -- whether the PID
+   * still refers to a live process at all. */
+  HANDLE h = open_pid_from_obj(obj, PROCESS_QUERY_LIMITED_INFORMATION);
+  if (h == nullptr) {
+    snprintf(p, p_max_size, "%s", "Not running");
+    return;
+  }
+  DWORD exit_code = 0;
+  bool alive = GetExitCodeProcess(h, &exit_code) && exit_code == STILL_ACTIVE;
+  CloseHandle(h);
+  snprintf(p, p_max_size, "%s", alive ? "Running" : "Not running");
+}
+
+void print_pid_threads(struct text_object *obj, char *p,
+                       unsigned int p_max_size) {
+  std::unique_ptr<char[]> buf(new char[max_user_text.get(*state)]);
+  generate_text_internal(buf.get(), max_user_text.get(*state), *obj->sub);
+  char *end = nullptr;
+  long pid_value = strtol(buf.get(), &end, 10);
+  if (end == buf.get() || pid_value <= 0) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap == INVALID_HANDLE_VALUE) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+  PROCESSENTRY32 pe = {};
+  pe.dwSize = sizeof(PROCESSENTRY32);
+  DWORD count = 0;
+  bool found = false;
+  if (Process32First(snap, &pe)) {
+    do {
+      if (static_cast<long>(pe.th32ProcessID) == pid_value) {
+        count = pe.cntThreads;
+        found = true;
+        break;
+      }
+    } while (Process32Next(snap, &pe));
+  }
+  CloseHandle(snap);
+  if (found) {
+    snprintf(p, p_max_size, "%lu", static_cast<unsigned long>(count));
+  } else if (p_max_size > 0) {
+    p[0] = '\0';
+  }
+}
+
+namespace {
+void print_pid_vm(struct text_object *obj, char *p, unsigned int p_max_size,
+                  bool peak) {
+  HANDLE h = open_pid_from_obj(
+      obj, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ);
+  if (h == nullptr) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+  PROCESS_MEMORY_COUNTERS_EX pmc = {};
+  pmc.cb = sizeof(pmc);
+  bool ok = GetProcessMemoryInfo(
+      h, reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc), sizeof(pmc));
+  CloseHandle(h);
+  if (!ok) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+  /* VmSize on Linux is total committed virtual memory; PagefileUsage is
+   * the closest Windows analog (commit charge), not WorkingSetSize
+   * (that's VmRSS's counterpart instead). */
+  SIZE_T bytes = peak ? pmc.PeakPagefileUsage : pmc.PagefileUsage;
+  snprintf(p, p_max_size, "%llu kB",
+           static_cast<unsigned long long>(bytes / 1024));
+}
+}  // namespace
+
+void print_pid_vmpeak(struct text_object *obj, char *p,
+                      unsigned int p_max_size) {
+  print_pid_vm(obj, p, p_max_size, true);
+}
+
+void print_pid_vmsize(struct text_object *obj, char *p,
+                      unsigned int p_max_size) {
+  print_pid_vm(obj, p, p_max_size, false);
+}
+
+void print_pid_vmrss(struct text_object *obj, char *p,
+                     unsigned int p_max_size) {
+  HANDLE h = open_pid_from_obj(
+      obj, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ);
+  if (h == nullptr) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+  PROCESS_MEMORY_COUNTERS pmc = {};
+  pmc.cb = sizeof(pmc);
+  bool ok = GetProcessMemoryInfo(h, &pmc, sizeof(pmc));
+  CloseHandle(h);
+  if (!ok) {
+    if (p_max_size > 0) p[0] = '\0';
+    return;
+  }
+  snprintf(p, p_max_size, "%llu kB",
+           static_cast<unsigned long long>(pmc.WorkingSetSize / 1024));
 }
