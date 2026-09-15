@@ -692,7 +692,7 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
   obj->callbacks.print = get_powerbook_batt_info;
 #endif /* __linux__ */
 #if (defined(__FreeBSD__) || defined(__linux__) || defined(__DragonFly__) || \
-     (defined(__APPLE__) && defined(__MACH__)))
+     (defined(__APPLE__) && defined(__MACH__)) || defined(_WIN32))
   END OBJ_IF_ARG(if_up, nullptr, "if_up needs an argument")
       parse_if_up_arg(obj, arg);
   obj->callbacks.iftest = &interface_up;
@@ -1466,6 +1466,9 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
 #else
   END OBJ(running_processes, &update_running_processes) obj->callbacks.print =
       &print_running_processes;
+#ifdef _WIN32
+  END OBJ(threads, &update_threads) obj->callbacks.print = &print_threads;
+#endif /* _WIN32 */
 #endif
 #endif /* __linux__ */
   END OBJ(shadecolor, nullptr)

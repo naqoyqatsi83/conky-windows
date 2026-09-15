@@ -31,6 +31,7 @@ namespace {
 struct CairoApi {
   using ImageSurfaceCreate_fn = cairo_surface_t *(*)(cairo_format_t, int,
                                                       int);
+  using SurfaceReference_fn = cairo_surface_t *(*)(cairo_surface_t *);
   using SurfaceDestroy_fn = void (*)(cairo_surface_t *);
   using SurfaceFlush_fn = void (*)(cairo_surface_t *);
   using ImageSurfaceGetData_fn = unsigned char *(*)(cairo_surface_t *);
@@ -40,6 +41,7 @@ struct CairoApi {
                                             double *);
 
   ImageSurfaceCreate_fn ImageSurfaceCreate = nullptr;
+  SurfaceReference_fn SurfaceReference = nullptr;
   SurfaceDestroy_fn SurfaceDestroy = nullptr;
   SurfaceFlush_fn SurfaceFlush = nullptr;
   ImageSurfaceGetData_fn ImageSurfaceGetData = nullptr;
@@ -69,6 +71,7 @@ bool load_cairo_api() {
   if (handle == nullptr) return false;
 
   resolve(handle, "cairo_image_surface_create", &g_cairo.ImageSurfaceCreate);
+  resolve(handle, "cairo_surface_reference", &g_cairo.SurfaceReference);
   resolve(handle, "cairo_surface_destroy", &g_cairo.SurfaceDestroy);
   resolve(handle, "cairo_surface_flush", &g_cairo.SurfaceFlush);
   resolve(handle, "cairo_image_surface_get_data",
@@ -80,6 +83,7 @@ bool load_cairo_api() {
           &g_cairo.SurfaceGetDeviceScale);
 
   g_cairo.loaded = g_cairo.ImageSurfaceCreate != nullptr &&
+                   g_cairo.SurfaceReference != nullptr &&
                    g_cairo.SurfaceDestroy != nullptr &&
                    g_cairo.SurfaceFlush != nullptr &&
                    g_cairo.ImageSurfaceGetData != nullptr &&
@@ -92,6 +96,11 @@ bool load_cairo_api() {
 }  // namespace
 
 bool available() { return load_cairo_api(); }
+
+cairo_surface_t *surface_reference(cairo_surface_t *surface) {
+  if (!load_cairo_api() || surface == nullptr) return surface;
+  return g_cairo.SurfaceReference(surface);
+}
 
 cairo_surface_t *image_surface_create(int width, int height) {
   if (!load_cairo_api() || width <= 0 || height <= 0) return nullptr;

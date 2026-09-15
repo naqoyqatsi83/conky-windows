@@ -61,6 +61,7 @@ bool available();
 // content") if available() is false -- callers don't need to guard every
 // call individually.
 cairo_surface_t *image_surface_create(int width, int height);
+cairo_surface_t *surface_reference(cairo_surface_t *surface);
 void surface_destroy(cairo_surface_t *surface);
 void surface_flush(cairo_surface_t *surface);
 unsigned char *image_surface_get_data(cairo_surface_t *surface);

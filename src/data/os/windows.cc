@@ -253,6 +253,30 @@ int update_running_processes() {
   return 0;
 }
 
+int update_threads() {
+  /* PROCESSENTRY32's cntThreads field is the thread count owned by that
+   * process -- summing it across a process snapshot gives the system-wide
+   * thread count without a separate TH32CS_SNAPTHREAD walk. */
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap == INVALID_HANDLE_VALUE) {
+    return 1;
+  }
+
+  unsigned short count = 0;
+  PROCESSENTRY32 pe = {};
+  pe.dwSize = sizeof(PROCESSENTRY32);
+
+  if (Process32First(snap, &pe)) {
+    do {
+      count += static_cast<unsigned short>(pe.cntThreads);
+    } while (Process32Next(snap, &pe));
+  }
+
+  CloseHandle(snap);
+  info.threads = count;
+  return 0;
+}
+
 /* ---- CPU usage and frequency ---- */
 
 void get_cpu_count(void) {

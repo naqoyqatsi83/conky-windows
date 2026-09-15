@@ -55,6 +55,10 @@ UNSUPPORTED_EXACT = {
     "keyboard_layout", "mouse_speed",         # X11-only
     "mysql",
     "top", "top_mem", "top_time", "top_io",  # process list works differently; see REVIEW below instead if present
+    "tcp_portmon",  # BUILD_PORT_MONITORS is gated to OS_LINUX (cmake/ConkyBuildOptions.cmake);
+                    # would need GetExtendedTcpTable() ported from scratch, not just re-enabled
+    "running_threads",  # threads is supported (see REVIEW below), but "running" (ready-state)
+                        # per-thread status isn't exposed by the Toolhelp32 API this port uses
 }
 
 # Objects that work on Windows but have a platform-specific gotcha worth

@@ -193,6 +193,19 @@ static int llua_conky_surface(lua_State *L) {
     lua_pushnil(L);
     return 1;
   }
+#if defined(BUILD_WINDOWS)
+  // On Windows, drawing_surface() hands back the SAME persistent surface
+  // every call (see cairo_dynamic.hh) rather than a fresh wrapper like
+  // real X11's cairo_xlib_surface_create() creates each time. A
+  // well-behaved theme that calls cairo_surface_destroy() on what it got
+  // from conky_surface() (or the cairo_xlib_surface_create() compat, which
+  // goes through here too) -- e.g. gnome-look.org conky_grey's
+  // conky_main() -- would otherwise free memory this port's own
+  // display_output_windows still holds, causing a use-after-free on the
+  // next frame. Bumping the refcount before handing it to Lua means that
+  // destroy call just drops the borrowed reference instead.
+  conky::cairo_dyn::surface_reference(surface.get());
+#endif /* BUILD_WINDOWS */
   tolua_pushusertype(L, surface.get(), "cairo_surface_t");
   return 1;
 }

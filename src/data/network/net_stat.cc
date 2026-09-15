@@ -599,8 +599,17 @@ END_TRUE:
   close(fd);
   return 1;
 #else /* _WIN32 */
-  (void)obj;
-  return 0;
+  /* update_net_stats() (src/data/os/windows.cc) already populates ns->up
+   * from GetAdaptersAddresses()'s OperStatus for every adapter conky knows
+   * about -- reuse it instead of the BSD-socket ioctl approach above,
+   * which doesn't exist on this target. */
+  auto *dev = static_cast<char *>(obj->data.opaque);
+  if (dev == nullptr) { return 0; }
+  struct net_stat *ns = get_net_stat(dev, nullptr, nullptr);
+  /* device never seen in an adapter enumeration: treat like not up,
+   * matching the "if device does not exist" comment on the Unix path. */
+  if (ns == nullptr) { return 0; }
+  return ns->up;
 #endif /* _WIN32 */
 }
 
