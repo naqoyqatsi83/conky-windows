@@ -205,10 +205,13 @@ jobs:
           # run_elevated.ps1.
           $installer = Get-ChildItem "installer\Conky-*-Setup.exe" | Select-Object -First 1
           Write-Output "Installer: $($installer.FullName)"
+          $installLog = "$env:TEMP\conky-install.log"
           .\installer\run_elevated.ps1 -ExePath $installer.FullName `
-            -Arguments "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MERGETASKS=install_lhm" `
+            -Arguments "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MERGETASKS=install_lhm /LOG=`"$installLog`"" `
             -WaitForPath "C:\Program Files\Conky\conky.exe"
-          Get-ChildItem "C:\Program Files\Conky"
+          Get-ChildItem "C:\Program Files\Conky" -Recurse
+          Write-Output "=== Install log ($installLog) ==="
+          if (Test-Path $installLog) { Get-Content $installLog } else { Write-Output "(no log file produced)" }
 
       - name: Verify ConkyTempHelper scheduled task
         if: success()
@@ -226,6 +229,13 @@ jobs:
           # Same UAC-hang problem and same fix as the install step above —
           # Inno Setup uninstallers inherit PrivilegesRequired from the
           # installer that generated them.
+          #
+          # Waits for conky.exe specifically to disappear, not the whole
+          # install directory: Inno Setup uninstallers commonly can't
+          # remove their own directory synchronously (unins000.exe can't
+          # delete the folder it's actively running from) and leave an
+          # empty/near-empty directory behind even on a fully successful
+          # uninstall — that's normal, not a bug.
           $uninst = "C:\Program Files\Conky\unins000.exe"
           if (-not (Test-Path $uninst)) {
             Write-Output "No uninstaller found at $uninst — nothing to clean up."
@@ -233,7 +243,7 @@ jobs:
           }
           .\installer\run_elevated.ps1 -ExePath $uninst `
             -Arguments "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" `
-            -WaitWhilePathExists "C:\Program Files\Conky"
+            -WaitWhilePathExists "C:\Program Files\Conky\conky.exe"
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')

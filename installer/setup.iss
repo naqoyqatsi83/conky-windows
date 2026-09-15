@@ -40,7 +40,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
 Name: "startup"; Description: "Start Conky &automatically at login"; GroupDescription: "Startup options:"; Flags: checkedonce
-Name: "install_lhm"; Description: "Install LibreHardwareMonitor (enables CPU/GPU temperature, fan speeds, voltages — runs as tray app)"; GroupDescription: "Hardware monitoring:"; Flags: unchecked
+Name: "install_lhm"; Description: "Install LibreHardwareMonitor (enables CPU/GPU temperature, fan speeds, voltages - runs as tray app)"; GroupDescription: "Hardware monitoring:"; Flags: unchecked
 
 [Dirs]
 Name: "{commonappdata}\Conky"
@@ -56,7 +56,7 @@ Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{group}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; IconFilename: "{app}\conky.ico"
 Name: "{group}\Conky (edit config)"; Filename: "notepad.exe"; Parameters: """{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"
 Name: "{group}\LibreHardwareMonitor"; Filename: "{app}\LibreHardwareMonitor\LibreHardwareMonitor.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm
-Name: "{group}\Conky Temp Helper"; Filename: "{app}\LibreHardwareMonitor\lhm-temp.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm; Comment: "Manual launch — normally runs automatically via scheduled task"
+Name: "{group}\Conky Temp Helper"; Filename: "{app}\LibreHardwareMonitor\lhm-temp.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm; Comment: "Manual launch - normally runs automatically via scheduled task"
 Name: "{group}\Uninstall Conky"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\conky.ico"
 Name: "{userstartup}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: startup; IconFilename: "{app}\conky.ico"
@@ -111,21 +111,36 @@ begin
 end;
 
 { -- Launch lhm-temp.exe and create the scheduled task -- }
+{ Logs every step via Inno Setup's Log() (captured in the install's own
+  diagnostic log - see /LOG on the command line, or Setup.exe's default
+  %TEMP%\Setup Log*.txt). Every step here used to be a bare try/except
+  swallowing all errors silently: a real bug (or misconfiguration) in this
+  function was previously undiagnosable without external tools, which is
+  exactly what made the schtasks /TR quoting bug hard to track down.     }
 procedure SetupTempHelper;
 var
   R: Integer;
   HelperPath: string;
   HelperDir: string;
+  ExceptionMsg: string;
 begin
   HelperPath := ExpandConstant('{app}\LibreHardwareMonitor\lhm-temp.exe');
   HelperDir := ExpandConstant('{app}\LibreHardwareMonitor');
-  if not FileExists(HelperPath) then
+  Log('SetupTempHelper: HelperPath=' + HelperPath);
+  if not FileExists(HelperPath) then begin
+    Log('SetupTempHelper: HelperPath does not exist -- skipping helper launch and task creation.');
     exit;
+  end;
 
-  // Launch helper directly — installer is elevated, no 740 possible.
+  // Launch helper directly - installer is elevated, no UAC possible.
   try
-    ShellExec('open', HelperPath, '', HelperDir, SW_HIDE, ewNoWait, R);
+    if ShellExec('open', HelperPath, '', HelperDir, SW_HIDE, ewNoWait, R) then
+      Log('SetupTempHelper: ShellExec launched lhm-temp.exe OK')
+    else
+      Log('SetupTempHelper: ShellExec FAILED, GetLastError-style result code R=' + IntToStr(R));
   except
+    ExceptionMsg := GetExceptionMessage;
+    Log('SetupTempHelper: ShellExec raised exception: ' + ExceptionMsg);
   end;
 
   // Create ONLOGON scheduled task so helper auto-starts at next login.
@@ -138,11 +153,16 @@ begin
   // which fails at run time with ERROR_FILE_NOT_FOUND (0x80070002) and
   // silently prevents gpu.dat / temp.dat from ever being written.
   try
-    Exec('schtasks.exe',
+    if Exec('schtasks.exe',
          '/CREATE /SC ONLOGON /TN "ConkyTempHelper" /TR "\"' + HelperPath +
          '\"" /RL HIGHEST /F',
-         '', SW_HIDE, ewWaitUntilTerminated, R);
+         '', SW_HIDE, ewWaitUntilTerminated, R) then
+      Log('SetupTempHelper: schtasks /CREATE exit code=' + IntToStr(R))
+    else
+      Log('SetupTempHelper: Exec() itself failed to launch schtasks.exe, R=' + IntToStr(R));
   except
+    ExceptionMsg := GetExceptionMessage;
+    Log('SetupTempHelper: schtasks /CREATE raised exception: ' + ExceptionMsg);
   end;
 end;
 
@@ -210,7 +230,7 @@ begin
   if not DirExists(ConfigDir) then
     CreateDir(ConfigDir);
 
-  // Detect GPU — wait a bit only if lhm-temp was actually installed
+  // Detect GPU - wait a bit only if lhm-temp was actually installed
   if FileExists(ExpandConstant('{app}\LibreHardwareMonitor\lhm-temp.exe')) then
     Sleep(3000);
   GpuIdx := DetectGpuIndex();
@@ -314,7 +334,7 @@ begin
       // Generate config with GPU detection (handles its own timing)
       CreateConfig();
     except
-      // Post-install errors are non-fatal — conky will still run,
+      // Post-install errors are non-fatal - conky will still run,
       // CPU/GPU data just won't be available until lhm-temp is
       // launched manually or at next login.
     end;
