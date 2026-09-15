@@ -110,6 +110,28 @@ try {
         throw "schtasks /Run failed (exit $LASTEXITCODE)"
     }
 
+    # Wait for the task's own process to actually finish running before
+    # checking any marker path. Confirmed necessary the hard way: polling
+    # only for a marker file (e.g. conky.exe existing) can return true
+    # while the launched installer is still mid-run -- conky.exe gets
+    # copied to disk early in the [Files] sequence, well before the
+    # ssPostInstall step (SetupTempHelper, CreateConfig) has even started,
+    # so "the marker exists" != "the process finished." A first attempt at
+    # this produced a truncated install log missing the entire
+    # SetupTempHelper section (and no "Log closed" line) because the log
+    # file gets read before Inno Setup finishes writing it.
+    $taskDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $status = ""
+    do {
+        Start-Sleep -Seconds 2
+        $status = (schtasks /Query /TN $taskName /FO LIST /V 2>$null |
+            Select-String "^Status:") -replace "^Status:\s*", ""
+    } while ($status -eq "Running" -and (Get-Date) -lt $taskDeadline)
+    if ($status -eq "Running") {
+        throw "Task '$taskName' was still Running after ${TimeoutSeconds}s."
+    }
+    Write-Host "Task finished running (status: $status)."
+
     if ($WaitForPath) {
         $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
         while (-not (Test-Path $WaitForPath) -and (Get-Date) -lt $deadline) {
