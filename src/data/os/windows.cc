@@ -213,6 +213,22 @@ int update_net_stats() {
         }
 #endif
       }
+
+      /* ${addrs}: every IPv4 address on this adapter, comma-joined --
+       * print_addrs() (src/data/network/net_stat.cc) expects this exact
+       * "a, b, c, " shape (trailing ", ") and trims it before display. */
+      ns->addrs[0] = '\0';
+      for (auto *ua = p->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
+        SOCKADDR *ua_sa = ua->Address.lpSockaddr;
+        if (ua_sa->sa_family != AF_INET) { continue; }
+        auto *sin = reinterpret_cast<sockaddr_in *>(ua_sa);
+        char one[32];
+        snprintf(one, sizeof(one), "%s, ", inet_ntoa(sin->sin_addr));
+        size_t used = strlen(ns->addrs);
+        if (used + 1 < sizeof(ns->addrs)) {
+          strncat(ns->addrs, one, sizeof(ns->addrs) - used - 1);
+        }
+      }
     }
   }
 

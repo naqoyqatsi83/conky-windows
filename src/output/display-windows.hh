@@ -51,6 +51,11 @@ class display_output_windows : public display_output_base {
 
   virtual bool graphical() { return true; }
 
+  // Windows-native handle, for ${monitor}/${monitor_number} (see
+  // display-windows.cc, defined after this class since it needs the
+  // windows_output instance).
+  HWND native_handle() const { return hwnd_; }
+
   // drawing primitives
   virtual void set_foreground_color(Colour c);
   virtual int calc_text_width(const char *s);

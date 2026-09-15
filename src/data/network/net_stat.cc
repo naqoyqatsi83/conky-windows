@@ -291,7 +291,7 @@ void print_addr(struct text_object *obj, char *p, unsigned int p_max_size) {
   }
 }
 
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
 void print_addrs(struct text_object *obj, char *p, unsigned int p_max_size) {
   struct net_stat *ns = (struct net_stat *)obj->data.opaque;
 
@@ -339,7 +339,7 @@ void print_v6addrs(struct text_object *obj, char *p, unsigned int p_max_size) {
 }
 #endif /* BUILD_IPV6 */
 
-#endif /* __linux__ */
+#endif /* __linux__ || _WIN32 */
 
 #ifdef BUILD_GUI
 

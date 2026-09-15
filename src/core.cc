@@ -895,13 +895,13 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
   obj->callbacks.print = &print_cat;
   obj->callbacks.free = &gen_free_opaque;
 
-#ifdef BUILD_X11
+#if defined(BUILD_X11) || defined(_WIN32)
   END OBJ(key_num_lock, 0) obj->callbacks.print = &print_key_num_lock;
   END OBJ(key_caps_lock, 0) obj->callbacks.print = &print_key_caps_lock;
   END OBJ(key_scroll_lock, 0) obj->callbacks.print = &print_key_scroll_lock;
   END OBJ(keyboard_layout, 0) obj->callbacks.print = &print_keyboard_layout;
   END OBJ(mouse_speed, 0) obj->callbacks.print = &print_mouse_speed;
-#endif /* BUILD_GUI */
+#endif /* BUILD_X11 || _WIN32 */
 
 #ifdef __FreeBSD__
   END OBJ(sysctlbyname, 0) obj->data.s = STRNDUP_ARG;
@@ -1108,6 +1108,11 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
 #endif /* BUILD_IPV6 */
   END
 #endif /* __linux__ */
+#ifdef _WIN32
+      OBJ(addrs, &update_net_stats) parse_net_stat_arg(obj, arg, free_at_crash);
+  obj->callbacks.print = &print_addrs;
+  END
+#endif /* _WIN32 */
       OBJ_ARG(tail, nullptr, "tail needs arguments")
           init_tailhead("tail", arg, obj);
   obj->callbacks.print = &print_tail;

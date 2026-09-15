@@ -186,19 +186,85 @@ extern conky::vec2i
     text_size; /* initially 1 so no zero-sized window is created */
 int get_border_total();
 
-/* Stub implementations for X11-only GUI functions */
+namespace conky {
+/* windows_output doesn't exist yet at this point in the file -- defined
+ * after it, just returns its native HWND for print_monitor() below. */
+HWND windows_output_hwnd();
+}  // namespace conky
+
+namespace {
+/* Finds which monitor conky's own window is currently on (index), and how
+ * many monitors exist in total -- the Windows equivalents of X11's
+ * XDefaultScreen()/XScreenCount() that ${monitor}/${monitor_number}
+ * report. EnumDisplayMonitors' callback is a plain C function pointer, so
+ * state is threaded through via its LPARAM instead of a capturing
+ * lambda. */
+struct monitor_search {
+  HMONITOR target;
+  int found = -1;
+  int count = 0;
+};
+
+BOOL CALLBACK monitor_enum_proc(HMONITOR hmon, HDC, LPRECT, LPARAM lp) {
+  auto *s = reinterpret_cast<monitor_search *>(lp);
+  if (hmon == s->target) { s->found = s->count; }
+  s->count++;
+  return TRUE;
+}
+}  // namespace
+
+/* Stub/real implementations for X11-only GUI functions. */
 #ifdef BUILD_GUI
 #ifndef BUILD_X11
-void print_monitor(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_monitor_number(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
+void print_monitor(struct text_object *, char *p, unsigned int n) {
+  HWND hwnd = conky::windows_output_hwnd();
+  if (hwnd == nullptr) {
+    if (n > 0) p[0] = '\0';
+    return;
+  }
+  monitor_search s;
+  s.target = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+  EnumDisplayMonitors(nullptr, nullptr, monitor_enum_proc,
+                      reinterpret_cast<LPARAM>(&s));
+  snprintf(p, n, "%d", s.found >= 0 ? s.found : 0);
+}
+void print_monitor_number(struct text_object *, char *p, unsigned int n) {
+  snprintf(p, n, "%d", GetSystemMetrics(SM_CMONITORS));
+}
 void print_desktop(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
 void print_desktop_number(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
 void print_desktop_name(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_key_num_lock(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_key_caps_lock(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_key_scroll_lock(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_keyboard_layout(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_mouse_speed(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
+
+void print_key_num_lock(struct text_object *, char *p, unsigned int n) {
+  snprintf(p, n, "%s", (GetKeyState(VK_NUMLOCK) & 1) ? "On " : "Off");
+}
+void print_key_caps_lock(struct text_object *, char *p, unsigned int n) {
+  snprintf(p, n, "%s", (GetKeyState(VK_CAPITAL) & 1) ? "On " : "Off");
+}
+void print_key_scroll_lock(struct text_object *, char *p, unsigned int n) {
+  snprintf(p, n, "%s", (GetKeyState(VK_SCROLL) & 1) ? "On " : "Off");
+}
+void print_keyboard_layout(struct text_object *, char *p, unsigned int n) {
+  /* GetKeyboardLayoutName() returns an 8-hex-digit HKL identifier (e.g.
+   * "00000409" for US English) -- not a human name, but the same thing
+   * upstream conky's own X11 implementation returns (an XKB layout
+   * string), so it's consistent with what themes already expect to
+   * display as-is. */
+  char buf[KL_NAMELENGTH] = {0};
+  if (GetKeyboardLayoutNameA(buf)) {
+    snprintf(p, n, "%s", buf);
+  } else {
+    if (n > 0) p[0] = '\0';
+  }
+}
+void print_mouse_speed(struct text_object *, char *p, unsigned int n) {
+  int speed = 0;
+  if (SystemParametersInfoA(SPI_GETMOUSESPEED, 0, &speed, 0)) {
+    snprintf(p, n, "%d", speed);
+  } else {
+    if (n > 0) p[0] = '\0';
+  }
+}
 #endif /* !BUILD_X11 */
 #endif /* BUILD_GUI */
 
@@ -222,6 +288,11 @@ void register_output<output_t::WINDOWS>(display_outputs_t &outputs) {
   outputs.push_back(&windows_output);
 }
 #endif
+
+/* Exposes windows_output's HWND to the global-scope print_monitor() above
+ * (which needs it before windows_output exists this far down the file) --
+ * see the forward declaration near the top of this file. */
+HWND windows_output_hwnd() { return windows_output.native_handle(); }
 
 display_output_windows::display_output_windows(const std::string &name_)
     : display_output_base(name_) {}

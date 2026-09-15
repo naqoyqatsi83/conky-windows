@@ -70,9 +70,9 @@ struct net_stat {
   bool v6show_nm;
   bool v6show_sc;
 #endif /* BUILD_IPV6 */
-#if defined(__linux__)
+#if defined(__linux__) || defined(_WIN32)
   char addrs[17 * MAX_NET_INTERFACES + 1];
-#endif /* __linux__ */
+#endif /* __linux__ || _WIN32 */
   /* network speeds between two conky calls in bytes per second.
    * An average over these samples is calculated in recv_speed and
    * trans_speed */
@@ -101,8 +101,10 @@ void print_upspeedf(struct text_object *, char *, unsigned int);
 void print_totaldown(struct text_object *, char *, unsigned int);
 void print_totalup(struct text_object *, char *, unsigned int);
 void print_addr(struct text_object *, char *, unsigned int);
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
 void print_addrs(struct text_object *, char *, unsigned int);
+#endif /* __linux__ || _WIN32 */
+#ifdef __linux__
 #ifdef BUILD_IPV6
 void print_v6addrs(struct text_object *, char *, unsigned int);
 #endif /* BUILD_IPV6 */
