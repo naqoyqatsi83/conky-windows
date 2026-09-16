@@ -14,6 +14,8 @@ section in [AGENTS.md](AGENTS.md) for how work flows from issue to
 Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
+## [1.24.3-wp.4] - 2026-09-16
+
 ### Added
 - `${apcupsd_*}` family on Windows (~13 objects) -- its NIS protocol is
   plain BSD sockets, needing only header/close()/WSAStartup fixes. [#25](https://github.com/naqoyqatsi83/conky-windows/issues/25)
@@ -51,6 +53,14 @@ version heading when that state gets tagged and merged to `main`.
   (`BUILD_IPV6` restricted to Linux). Also fixed a dormant heap-corrupting
   buffer overflow in the adapter address memcpy, exposed for the first
   time by enabling IPv6 support. [#26](https://github.com/naqoyqatsi83/conky-windows/issues/26)
+- Real Cairo support for `lua_draw_hook_pre`/`lua_draw_hook_post`, via a
+  vendored Cairo build and a persistent off-screen surface (this port's
+  per-frame DIB doesn't live long enough for hooks to draw into
+  directly). Includes a compat shim so themes calling
+  `cairo_xlib_surface_create()` directly work unmodified. [#10](https://github.com/naqoyqatsi83/conky-windows/issues/10)
+- A systematic coverage audit of all 467 objects conky can register,
+  cross-checked against what's actually wired up for Windows -- the
+  source for most of the fixes in this release.
 
 ### Changed
 - `tools/backport_conkyrc.py` now flags `${...}` objects that aren't real
@@ -81,17 +91,6 @@ version heading when that state gets tagged and merged to `main`.
   the actual GDI output was always correct. [#9](https://github.com/naqoyqatsi83/conky-windows/issues/9)
 - CI: `patch.exe` missing on the MSYS2 runner once `BUILD_LUA_CAIRO` was
   forced on by default. [#29](https://github.com/naqoyqatsi83/conky-windows/issues/29)
-
-### Added
-- Real Cairo support for `lua_draw_hook_pre`/`lua_draw_hook_post`, via a
-  vendored Cairo build and a persistent off-screen surface (this port's
-  per-frame DIB doesn't live long enough for hooks to draw into
-  directly). Includes a compat shim so themes calling
-  `cairo_xlib_surface_create()` directly work unmodified. [#10](https://github.com/naqoyqatsi83/conky-windows/issues/10)
-- A systematic coverage audit of all 467 objects conky can register,
-  cross-checked against what's actually wired up for Windows -- the
-  source for most of the fixes above and the remaining backlog (see
-  open issues [#13](https://github.com/naqoyqatsi83/conky-windows/issues/13), [#18](https://github.com/naqoyqatsi83/conky-windows/issues/18)-[#26](https://github.com/naqoyqatsi83/conky-windows/issues/26)).
 
 ## Earlier work
 
