@@ -235,9 +235,50 @@ void print_monitor(struct text_object *, char *p, unsigned int n) {
 void print_monitor_number(struct text_object *, char *p, unsigned int n) {
   snprintf(p, n, "%d", GetSystemMetrics(SM_CMONITORS));
 }
-void print_desktop(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_desktop_number(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
-void print_desktop_name(struct text_object *, char *p, unsigned int) { if (p) *p = 0; }
+void print_desktop(struct text_object *, char *p, unsigned int n) { if (n > 0) p[0] = 0; }
+void print_desktop_number(struct text_object *, char *p, unsigned int n) { if (n > 0) p[0] = 0; }
+/* Windows virtual desktops have no stable *public* Win32 API for
+ * enumeration/naming (as of Windows 11, tested build 26200).
+ * IVirtualDesktopManager -- the real, documented, stable interface --
+ * only answers "is my window on the current desktop" and "what desktop
+ * GUID is my window on", neither of which gives an index, a count, or a
+ * name. Those require the undocumented IVirtualDesktopManagerInternal/
+ * IVirtualDesktop COM interfaces every third-party virtual-desktop tool
+ * uses.
+ *
+ * Genuinely attempted this (see conky-windows issue #22 for the
+ * write-up): sourced current CLSIDs/IIDs from the actively-maintained
+ * github.com/Ciantic/VirtualDesktopAccessor and a build-26100-specific
+ * interface table from github.com/kloned/Virtual-Desktop-Grid-Switcher
+ * (closest available to this machine's actual build, 26200).
+ * CoCreateInstance(CLSID_ImmersiveShell, CLSCTX_LOCAL_SERVER) and the
+ * subsequent IServiceProvider::QueryService() both succeeded cleanly and
+ * returned live, non-null pointers -- but calling through the returned
+ * IVirtualDesktopManagerInternal (even just GetDesktopCount(), the very
+ * first real method) crashed with "pure virtual method called" every
+ * time. Live-debugged this down to the assembly level: the vtable slot
+ * is a legitimate combase.dll ObjectStublessClient3 NDR marshaling
+ * thunk (confirmed via disassembly), not a bogus pointer -- meaning the
+ * object is a real out-of-process COM proxy, but calling through it
+ * fails, consistent with there being no registered proxy/stub
+ * information for this specific undocumented IID on this build. Tried
+ * CLSCTX_INPROC_SERVER as an alternative (fails cleanly with
+ * REGDB_E_CLASSNOTREG -- confirms no in-proc server is registered, only
+ * out-of-process), COINIT_APARTMENTTHREADED vs. COINIT_MULTITHREADED,
+ * and CoIncrementMTAUsage() -- none changed the outcome.
+ *
+ * Community tools that successfully call this interface (Grabacr07/
+ * VirtualDesktop, Ciantic/VirtualDesktopAccessor) go through much
+ * heavier COM-interop machinery (.NET RCW generation / Rust's windows-rs
+ * crate) than a raw C++ vtable struct can easily replicate, and none of
+ * their public documentation explains what makes cross-process
+ * marshaling of this specific undocumented interface actually work.
+ * Making the safe call per this issue's own "decide on graceful
+ * degradation" ask: left as the same empty stub behavior these objects
+ * had before this investigation, rather than shipping something that
+ * crashes conky outright. Worth revisiting if a documented, reliable
+ * marshaling technique for undocumented shell COM interfaces surfaces. */
+void print_desktop_name(struct text_object *, char *p, unsigned int n) { if (n > 0) p[0] = 0; }
 
 void print_key_num_lock(struct text_object *, char *p, unsigned int n) {
   snprintf(p, n, "%s", (GetKeyState(VK_NUMLOCK) & 1) ? "On " : "Off");
