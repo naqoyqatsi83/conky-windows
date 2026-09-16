@@ -47,7 +47,7 @@ from pathlib import Path
 # Object name prefixes with zero Windows equivalent (feature compiled out  - 
 # see cmake/ConkyBuildOptions.cmake / .github/workflows/build-windows.yml).
 UNSUPPORTED_PREFIXES = (
-    "mpd_", "moc_", "cmus_", "xmms2_", "audacious_",  # music players
+    "moc_", "cmus_", "xmms2_", "audacious_",  # music players -- mpd_ works (issue #19)
     "apcupsd_",                                        # UPS monitoring
     "pa_",                                              # PulseAudio
     "wireless_",                                        # Linux wireless-tools
