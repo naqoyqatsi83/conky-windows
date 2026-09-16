@@ -58,8 +58,6 @@ UNSUPPORTED_EXACT = {
     "mysql",
     "top_time", "top_io",  # top/top_mem work (see issue #17); time/io sorting not re-verified,
                             # and io needs BUILD_IOSTATS, off for Windows
-    "tcp_portmon",  # BUILD_PORT_MONITORS is gated to OS_LINUX (cmake/ConkyBuildOptions.cmake);
-                    # would need GetExtendedTcpTable() ported from scratch, not just re-enabled
     "running_threads",  # threads is supported (see REVIEW below), but "running" (ready-state)
                         # per-thread status isn't exposed by the Toolhelp32 API this port uses
     "image",  # BUILD_IMLIB2 is off; would need a from-scratch GDI+ backend, not a port (issue #24)

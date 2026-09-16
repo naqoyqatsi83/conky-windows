@@ -68,3 +68,4 @@ installer/lhm-temp/lhm-temp.exe
 # Built manual
 /conky.1.gz
 .codex/
+__pycache__/

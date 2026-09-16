@@ -546,7 +546,27 @@ if(BUILD_WLAN AND OS_LINUX)
   check_function_exists(iw_sockets_open IWLIB_SOCKETS_OPEN_FUNC)
 endif(BUILD_WLAN AND OS_LINUX)
 
-if(BUILD_PORT_MONITORS)
+if(BUILD_PORT_MONITORS AND OS_WINDOWS)
+  # getnameinfo() lives in ws2_32 on Windows -- check_function_exists()
+  # needs it in CMAKE_REQUIRED_LIBRARIES to actually link the probe.
+  # There's no netdb.h/netinet/*.h/sys/socket.h/arpa/inet.h here either;
+  # libtcp-portmon.h pulls in winsock2.h/ws2tcpip.h instead (see
+  # conky-windows issue #13), so check for those.
+  set(CMAKE_REQUIRED_LIBRARIES_SAVE ${CMAKE_REQUIRED_LIBRARIES})
+  set(CMAKE_REQUIRED_LIBRARIES ws2_32)
+  check_function_exists(getnameinfo HAVE_GETNAMEINFO)
+  set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES_SAVE})
+
+  if(NOT HAVE_GETNAMEINFO)
+    message(FATAL_ERROR "could not find getnameinfo()")
+  endif(NOT HAVE_GETNAMEINFO)
+
+  check_include_files("winsock2.h;ws2tcpip.h;iphlpapi.h" HAVE_PORTMON_HEADERS)
+
+  if(NOT HAVE_PORTMON_HEADERS)
+    message(FATAL_ERROR "missing needed network header(s) for port monitoring")
+  endif(NOT HAVE_PORTMON_HEADERS)
+elseif(BUILD_PORT_MONITORS)
   check_function_exists(getnameinfo HAVE_GETNAMEINFO)
 
   if(NOT HAVE_GETNAMEINFO)
@@ -560,7 +580,7 @@ if(BUILD_PORT_MONITORS)
   if(NOT HAVE_PORTMON_HEADERS)
     message(FATAL_ERROR "missing needed network header(s) for port monitoring")
   endif(NOT HAVE_PORTMON_HEADERS)
-endif(BUILD_PORT_MONITORS)
+endif()
 
 # Check for iconv
 if(BUILD_ICONV)

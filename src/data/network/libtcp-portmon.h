@@ -22,6 +22,13 @@
 #ifndef LIBTCP_PORTMON_H
 #define LIBTCP_PORTMON_H
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+/* in_port_t is a POSIX typedef with no MinGW equivalent (socklen_t, used
+ * the same way here, does come from ws2tcpip.h above). */
+typedef unsigned short in_port_t;
+#else
 #include <sys/socket.h>
 #include <sys/types.h>
 
@@ -30,6 +37,7 @@
 #include <netinet/tcp.h>
 
 #include <netdb.h>
+#endif /* _WIN32 */
 
 /* connection deleted if unseen again after this # of refreshes */
 #define TCP_CONNECTION_STARTING_AGE 1

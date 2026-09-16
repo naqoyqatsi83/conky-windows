@@ -33,6 +33,10 @@
 #include <vector>
 #include "../../logging.h"
 
+#ifdef _WIN32
+#include <iphlpapi.h>
+#endif /* _WIN32 */
+
 /* -------------------------------------------------------------------
  * IMPLEMENTATION INTERFACE
  *
@@ -289,6 +293,70 @@ void print_host(char *p_buffer, size_t buffer_size, const struct in6_addr *addr,
               fqdn ? 0 : NI_NUMERICHOST);
 }
 
+#ifdef _WIN32
+/* Windows equivalent of process_file() below -- there's no /proc here, so
+ * connections come from GetExtendedTcpTable() (IP Helper API) instead of
+ * parsing text files. Mirrors process_file()'s behavior of only showing
+ * ESTABLISHED connections (MIB_TCP_STATE_ESTAB == the Windows numbering
+ * for the same state /proc/net/tcp calls "01"). */
+void process_windows_tcp_table(tcp_port_monitor_collection_t *p_collection) {
+  ULONG size = 0;
+  GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL,
+                      0);
+  if (size > 0) {
+    std::vector<char> buf(size);
+    auto *table = reinterpret_cast<MIB_TCPTABLE_OWNER_PID *>(buf.data());
+    if (GetExtendedTcpTable(table, &size, FALSE, AF_INET,
+                            TCP_TABLE_OWNER_PID_ALL, 0) == NO_ERROR) {
+      for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+        const MIB_TCPROW_OWNER_PID &row = table->table[i];
+        if (row.dwState != MIB_TCP_STATE_ESTAB) { continue; }
+
+        tcp_connection_t conn;
+        std::memset(&conn, 0, sizeof(conn));
+        std::memcpy(conn.local_addr.s6_addr, prefix_4on6,
+                    sizeof(prefix_4on6));
+        std::memcpy(&conn.local_addr.s6_addr[12], &row.dwLocalAddr, 4);
+        std::memcpy(conn.remote_addr.s6_addr, prefix_4on6,
+                    sizeof(prefix_4on6));
+        std::memcpy(&conn.remote_addr.s6_addr[12], &row.dwRemoteAddr, 4);
+        conn.local_port = ntohs(static_cast<u_short>(row.dwLocalPort));
+        conn.remote_port = ntohs(static_cast<u_short>(row.dwRemotePort));
+
+        for_each_tcp_port_monitor_in_collection(
+            p_collection, &show_connection_to_tcp_port_monitor,
+            (void *)&conn);
+      }
+    }
+  }
+
+  size = 0;
+  GetExtendedTcpTable(nullptr, &size, FALSE, AF_INET6,
+                      TCP_TABLE_OWNER_PID_ALL, 0);
+  if (size > 0) {
+    std::vector<char> buf(size);
+    auto *table = reinterpret_cast<MIB_TCP6TABLE_OWNER_PID *>(buf.data());
+    if (GetExtendedTcpTable(table, &size, FALSE, AF_INET6,
+                            TCP_TABLE_OWNER_PID_ALL, 0) == NO_ERROR) {
+      for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+        const MIB_TCP6ROW_OWNER_PID &row = table->table[i];
+        if (row.dwState != MIB_TCP_STATE_ESTAB) { continue; }
+
+        tcp_connection_t conn;
+        std::memset(&conn, 0, sizeof(conn));
+        std::memcpy(conn.local_addr.s6_addr, row.ucLocalAddr, 16);
+        std::memcpy(conn.remote_addr.s6_addr, row.ucRemoteAddr, 16);
+        conn.local_port = ntohs(static_cast<u_short>(row.dwLocalPort));
+        conn.remote_port = ntohs(static_cast<u_short>(row.dwRemotePort));
+
+        for_each_tcp_port_monitor_in_collection(
+            p_collection, &show_connection_to_tcp_port_monitor,
+            (void *)&conn);
+      }
+    }
+  }
+}
+#else
 /* converts the textual representation of an IPv4 or IPv6 address to struct
  * in6_addr */
 void string_to_addr(struct in6_addr *addr, const char *p_buffer) {
@@ -348,6 +416,7 @@ void process_file(tcp_port_monitor_collection_t *p_collection,
 
   std::fclose(fp);
 }
+#endif /* _WIN32 */
 }  // namespace
 
 /* ----------------------------------------------------------------------
@@ -453,6 +522,15 @@ int peek_tcp_port_monitor(const tcp_port_monitor_t *p_monitor, int item,
 
 /* Create a monitor collection.  Do this one first. */
 tcp_port_monitor_collection_t *create_tcp_port_monitor_collection(void) {
+#ifdef _WIN32
+  /* getnameinfo()/GetExtendedTcpTable() are real Winsock/IP Helper calls
+   * (unlike the plain IP Helper API used elsewhere in this port, e.g.
+   * GetAdaptersAddresses()) and getnameinfo() fails silently with
+   * WSANOTINITIALISED if the socket subsystem was never started -- nothing
+   * else in this port calls WSAStartup(), so do it here. */
+  WSADATA wsa_data;
+  WSAStartup(MAKEWORD(2, 2), &wsa_data);
+#endif /* _WIN32 */
   return new tcp_port_monitor_collection_t();
 }
 
@@ -461,6 +539,9 @@ tcp_port_monitor_collection_t *create_tcp_port_monitor_collection(void) {
 void destroy_tcp_port_monitor_collection(
     tcp_port_monitor_collection_t *p_collection) {
   delete p_collection;
+#ifdef _WIN32
+  WSACleanup();
+#endif /* _WIN32 */
 }
 
 /* Updates the tcp statistics for all monitors within a collection */
@@ -468,8 +549,12 @@ void update_tcp_port_monitor_collection(
     tcp_port_monitor_collection_t *p_collection) {
   if (!p_collection) { return; }
 
+#ifdef _WIN32
+  process_windows_tcp_table(p_collection);
+#else
   process_file(p_collection, "/proc/net/tcp");
   process_file(p_collection, "/proc/net/tcp6");
+#endif /* _WIN32 */
 
   /* age the connections in all port monitors. */
   for_each_tcp_port_monitor_in_collection(p_collection, &age_tcp_port_monitor,

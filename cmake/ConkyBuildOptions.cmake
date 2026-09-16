@@ -154,7 +154,7 @@ set(MAX_NET_INTERFACES "256" CACHE STRING "Maximum number of network devices")
 
 # Platform specific options Linux only
 cmake_dependent_option(BUILD_PORT_MONITORS "Build TCP portmon support" true
-  "OS_LINUX" false)
+  "OS_LINUX OR OS_WINDOWS" false)
 cmake_dependent_option(BUILD_IBM "Support for IBM/Lenovo notebooks" true
   "OS_LINUX" false)
 cmake_dependent_option(BUILD_HDDTEMP "Support for hddtemp" true
