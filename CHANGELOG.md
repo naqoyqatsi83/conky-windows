@@ -23,6 +23,14 @@ version heading when that state gets tagged and merged to `main`.
   edits/restarts, and all 9 grid positions confirmed via
   `GetWindowRect` to land the window at the expected screen
   corner/edge. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+- `xinerama_head` config key on Windows: selects which monitor the window
+  is placed on (0-indexed, matching `${monitor}`'s own enumeration order),
+  reusing upstream's X11 head-selection key name. Defaults to -1 (primary
+  monitor, unchanged from prior behavior); out-of-range values fall back
+  to primary with a logged warning. Verified on this machine's real
+  2-monitor setup: `xinerama_head = 1` lands the window on the secondary
+  monitor, `0`/unset/out-of-range all correctly resolve to
+  primary. [#32](https://github.com/naqoyqatsi83/conky-windows/issues/32)
 
 ## [1.24.3-wp.4] - 2026-09-16
 

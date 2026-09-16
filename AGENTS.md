@@ -99,6 +99,13 @@ Key settings:
 - `own_window = true` — enables the layered window
 - `gap_x = 20, gap_y = 60` — offset from screen edge
 - `minimum_width = 340` — forces minimum window width
+- `xinerama_head = N` — which monitor to place the window on, 0-indexed in
+  `EnumDisplayMonitors` order (same numbering as `${monitor}`). Defaults to
+  -1 (primary monitor). Reused from upstream's X11 head-selection key name
+  for cross-platform conkyrc portability; the underlying mechanism is
+  unrelated (Windows has no Xinerama). Out-of-range values fall back to the
+  primary monitor with a logged warning. See `resolve_target_monitor()` in
+  `src/output/display-windows.cc`.
 - GPU vars use `${nvidia gputemp 0}` etc. (NVML backend)
 
 ## Testing

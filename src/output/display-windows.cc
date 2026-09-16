@@ -215,6 +215,55 @@ BOOL CALLBACK monitor_enum_proc(HMONITOR hmon, HDC, LPRECT, LPARAM lp) {
   s->count++;
   return TRUE;
 }
+
+struct monitor_pick {
+  int target_index;
+  int current = 0;
+  HMONITOR result = nullptr;
+};
+
+BOOL CALLBACK monitor_pick_proc(HMONITOR hmon, HDC, LPRECT, LPARAM lp) {
+  auto *s = reinterpret_cast<monitor_pick *>(lp);
+  if (s->current == s->target_index) {
+    s->result = hmon;
+    return FALSE; /* found it, stop enumerating */
+  }
+  s->current++;
+  return TRUE;
+}
+}  // namespace
+
+/* Which monitor to place the window on, 0-indexed in the same
+ * EnumDisplayMonitors order ${monitor}/${monitor_number} use above. -1 (the
+ * default) means "use the primary monitor", preserving this port's original
+ * always-primary behaviour. Named to match upstream's X11 xinerama_head for
+ * cross-platform conkyrc portability, even though the underlying mechanism
+ * (EnumDisplayMonitors vs Xinerama) is unrelated. */
+conky::simple_config_setting<int> monitor_head("xinerama_head", -1, true);
+
+namespace {
+/* Single source of truth for "which monitor should conky's window be on",
+ * used only where the window doesn't exist yet or its current monitor can't
+ * be queried -- see embed_in_desktop()'s comment for why every other call
+ * site should derive the monitor from the window itself instead of calling
+ * this again. */
+HMONITOR resolve_target_monitor() {
+  int idx = monitor_head.get(*state);
+  if (idx < 0) { return MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY); }
+
+  monitor_pick pick;
+  pick.target_index = idx;
+  EnumDisplayMonitors(nullptr, nullptr, monitor_pick_proc,
+                      reinterpret_cast<LPARAM>(&pick));
+  if (pick.result == nullptr) {
+    LOG_WARNING(
+        "windows display: xinerama_head {} doesn't exist ({} monitor(s) "
+        "detected), falling back to the primary monitor",
+        idx, GetSystemMetrics(SM_CMONITORS));
+    return MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+  }
+  return pick.result;
+}
 }  // namespace
 
 /* Stub/real implementations for X11-only GUI functions. */
@@ -373,12 +422,15 @@ bool display_output_windows::embed_in_desktop() {
   wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
   RegisterClassEx(&wc);
 
-  // Use the primary monitor only (not the full virtual-screen span) so that
+  // Use a single monitor's rect (not the full virtual-screen span) so that
   // conky's alignment math (text_offset + goto offsets) stays within bounds.
   // On a multi-monitor setup, the virtual screen would be much wider and
-  // "top_right" alignment would push text off the right edge.
-  HMONITOR hmon =
-      MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+  // "top_right" alignment would push text off the right edge. Which monitor
+  // is controlled by the xinerama_head config setting (see monitor_head
+  // above); this is the only place that resolves it -- every other call
+  // site in this file derives the monitor from hwnd_'s actual position
+  // instead, since by then the window already lives on the right one.
+  HMONITOR hmon = resolve_target_monitor();
   MONITORINFO mi = {};
   mi.cbSize = sizeof(mi);
   if (!GetMonitorInfo(hmon, &mi)) {
@@ -562,11 +614,14 @@ bool display_output_windows::initialize() {
   cimlib_init();
 #endif
 
-  /* Workarea describes the primary monitor's usable area (excluding taskbar).
+  /* Workarea describes the target monitor's usable area (excluding taskbar).
    * Conky positions text relative to this rect (e.g. "top_right" means the
    * text sits at the right edge of the workarea).  The window is resized and
-   * positioned by resize_to_content() using the alignment + gap settings. */
-  HMONITOR hmon = MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+   * positioned by resize_to_content() using the alignment + gap settings.
+   * embed_in_desktop() (just above) already placed hwnd_ on the configured
+   * monitor, so ask the window where it is rather than re-resolving
+   * xinerama_head a second time. */
+  HMONITOR hmon = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
   MONITORINFO mi = {};
   mi.cbSize = sizeof(mi);
   if (GetMonitorInfo(hmon, &mi)) {
@@ -968,7 +1023,7 @@ void display_output_windows::resize_to_content() {
   MONITORINFO mi = {};
   mi.cbSize = sizeof(mi);
   if (!GetMonitorInfo(hmon, &mi)) {
-    hmon = MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    hmon = resolve_target_monitor();
     GetMonitorInfo(hmon, &mi);
   }
   int max_h = mi.rcWork.bottom - mi.rcWork.top;
