@@ -10,6 +10,10 @@ conky.text, and classifies each one:
                   numbering, network interface naming, single-battery
                   support, etc.) that needs a human decision
   - UNSUPPORTED - no Windows equivalent (Linux-only subsystem)
+  - UNKNOWN     - not a real conky object at all in this fork (typo, or a
+                  long-deprecated/removed upstream object -- see issue #8).
+                  Checked against the actual object registry in
+                  src/core.cc, not a hand-maintained guess.
   - EXEC        - a ${exec}/${execi}/${execp}/${execpi}/${texeci} shell
                   body; matched against a small POSIX -> PowerShell idiom
                   table where possible
@@ -99,6 +103,134 @@ REVIEW_OBJECTS = {
     "battery_percent": "See ${battery} note above.",
     "battery_time": "See ${battery} note above.",
 }
+
+# ---------------------------------------------------------------------------
+# Master registry of real conky object names, for telling "not implemented
+# on Windows" apart from "not a conky object at all" (issue #8). Objects
+# handled via a manual strncmp() dispatch in core.cc rather than the OBJ()
+# macro family (only "top"/"top_mem"/"top_time"/"top_io", as of this
+# writing -- see the parse_top_args() call in core.cc) are added on top,
+# since a regex scan of the macro invocations alone can't see them.
+# ---------------------------------------------------------------------------
+
+EXTRA_KNOWN_OBJECTS = {"top", "top_mem", "top_time", "top_io"}
+
+# Snapshot of src/core.cc's OBJ/OBJ_ARG/OBJ_IF/OBJ_IF_ARG registrations,
+# used only if core.cc can't be found on disk (e.g. this script copied out
+# of the repo) -- _load_known_objects() below re-derives this from source
+# whenever possible, so it stays correct as core.cc changes.
+_KNOWN_OBJECTS_SNAPSHOT = frozenset({
+    "acpiacadapter", "acpifan", "acpitemp", "addr", "addrs", "alignc",
+    "alignr", "apcupsd", "apcupsd_cable", "apcupsd_charge", "apcupsd_lastxfer", "apcupsd_linev",
+    "apcupsd_load", "apcupsd_loadbar", "apcupsd_loadgauge", "apcupsd_loadgraph", "apcupsd_model", "apcupsd_name",
+    "apcupsd_status", "apcupsd_temp", "apcupsd_timeleft", "apcupsd_upsmode", "apm_adapter", "apm_battery_life",
+    "apm_battery_time", "audacious_bar", "audacious_bitrate", "audacious_channels", "audacious_filename", "audacious_frequency",
+    "audacious_length", "audacious_length_seconds", "audacious_main_volume", "audacious_playlist_length", "audacious_playlist_position", "audacious_position",
+    "audacious_position_seconds", "audacious_status", "audacious_title", "battery", "battery_bar", "battery_percent",
+    "battery_power_draw", "battery_short", "battery_status", "battery_time", "blink", "buffers",
+    "cached", "cat", "catp", "cmdline_to_pid", "cmus_aaa", "cmus_album",
+    "cmus_artist", "cmus_curtime", "cmus_date", "cmus_file", "cmus_genre", "cmus_percent",
+    "cmus_progress", "cmus_random", "cmus_repeat", "cmus_state", "cmus_timeleft", "cmus_title",
+    "cmus_totaltime", "cmus_track", "color", "color0", "color1", "color2",
+    "color3", "color4", "color5", "color6", "color7", "color8",
+    "color9", "combine", "conky_build_arch", "conky_version", "cpu", "cpubar",
+    "cpugauge", "cpugovernor", "cpugraph", "curl", "desktop", "desktop_name",
+    "desktop_number", "disk_protect", "diskio", "diskio_read", "diskio_write", "diskiograph",
+    "diskiograph_read", "diskiograph_write", "distribution", "downspeed", "downspeedf", "downspeedgraph",
+    "draft_mails", "else", "endif", "entropy_avail", "entropy_bar", "entropy_perc",
+    "entropy_poolsize", "eval", "exec", "execbar", "execgauge", "execgraph",
+    "execi", "execibar", "execigauge", "execigraph", "execp", "execpi",
+    "flagged_mails", "font", "font0", "font1", "font2", "font3",
+    "font4", "font5", "font6", "font7", "font8", "font9",
+    "format_time", "forwarded_mails", "free_bufcache", "free_cached", "freq", "freq2",
+    "freq_g", "fs_bar", "fs_bar_free", "fs_free", "fs_free_perc", "fs_size",
+    "fs_type", "fs_used", "fs_used_perc", "gid_name", "github_notifications", "goto",
+    "gpufan", "gpugraph", "gpumemtotal", "gpumemused", "gpuname", "gputemp",
+    "gpuutil", "gw_iface", "gw_ip", "hddtemp", "head", "hr",
+    "hwmon", "hwmonbar", "i2c", "i2cbar", "i8k_ac_status", "i8k_bios",
+    "i8k_buttons_status", "i8k_cpu_temp", "i8k_left_fan_rpm", "i8k_left_fan_status", "i8k_right_fan_rpm", "i8k_right_fan_status",
+    "i8k_serial", "i8k_version", "ibm_brightness", "ibm_fan", "ibm_temps", "ibm_thinklight",
+    "ibm_volume", "ical", "iconv_start", "iconv_stop", "if_empty", "if_existing",
+    "if_gw", "if_match", "if_mixer_mute", "if_mounted", "if_mpd_playing", "if_pa_sink_muted",
+    "if_pa_source_muted", "if_pa_source_running", "if_running", "if_smapi_bat_installed", "if_up", "if_updatenr",
+    "if_xmms2_connected", "iface", "image", "imap_messages", "imap_unseen", "intel_backlight",
+    "ioscheduler", "irc", "journal", "kernel", "key_caps_lock", "key_num_lock",
+    "key_scroll_lock", "keyboard_layout", "laptop_mode", "legacymem", "lines", "loadavg",
+    "loadgraph", "lowercase", "lua", "lua_bar", "lua_gauge", "lua_graph",
+    "lua_parse", "machine", "mails", "mboxscan", "mem", "memactive",
+    "memavail", "membar", "memdirty", "memeasyfree", "memfree", "memgauge",
+    "memgraph", "meminactive", "memlaundry", "memmax", "memperc", "memwired",
+    "memwithbuffers", "memwithbuffersbar", "memwithbuffersgraph", "mixer", "mixerbar", "mixerl",
+    "mixerlbar", "mixerr", "mixerrbar", "moc_album", "moc_artist", "moc_avgbitrate",
+    "moc_bar", "moc_bitrate", "moc_cursec", "moc_curtime", "moc_file", "moc_percent",
+    "moc_rate", "moc_song", "moc_state", "moc_timeleft", "moc_title", "moc_totalsec",
+    "moc_totaltime", "monitor", "monitor_number", "mouse_speed", "mpd_album", "mpd_albumartist",
+    "mpd_artist", "mpd_bar", "mpd_bitrate", "mpd_comment", "mpd_date", "mpd_elapsed",
+    "mpd_file", "mpd_length", "mpd_name", "mpd_percent", "mpd_random", "mpd_repeat",
+    "mpd_smart", "mpd_status", "mpd_title", "mpd_track", "mpd_vol", "mysql",
+    "nameserver", "new_mails", "no_update", "nodename", "nodename_short", "nvidia",
+    "nvidiabar", "nvidiagauge", "nvidiagraph", "obsd_product", "obsd_sensors_fan", "obsd_sensors_temp",
+    "obsd_sensors_volt", "obsd_vendor", "offset", "outlinecolor", "pa_card_active_profile", "pa_card_name",
+    "pa_sink_active_port_description", "pa_sink_active_port_name", "pa_sink_description", "pa_sink_volume", "pa_sink_volumebar", "password",
+    "pb_battery", "pid_chroot", "pid_cmdline", "pid_cwd", "pid_egid", "pid_environ",
+    "pid_environ_list", "pid_euid", "pid_exe", "pid_fsgid", "pid_fsuid", "pid_gid",
+    "pid_nice", "pid_openfiles", "pid_parent", "pid_priority", "pid_read", "pid_sgid",
+    "pid_state", "pid_state_short", "pid_stderr", "pid_stdin", "pid_stdout", "pid_suid",
+    "pid_thread_list", "pid_threads", "pid_time", "pid_time_kernelmode", "pid_time_usermode", "pid_uid",
+    "pid_vmdata", "pid_vmexe", "pid_vmhwm", "pid_vmlck", "pid_vmlib", "pid_vmpeak",
+    "pid_vmpte", "pid_vmrss", "pid_vmsize", "pid_vmstk", "pid_write", "platform",
+    "platformbar", "pop3_unseen", "pop3_used", "processes", "read_tcp", "read_udp",
+    "replied_mails", "rss", "rstrip", "running_processes", "running_threads", "save_coordinates",
+    "scroll", "seen_mails", "shadecolor", "shmem", "sip_status", "smapi",
+    "smapi_bat_bar", "smapi_bat_perc", "smapi_bat_power", "smapi_bat_temp", "sony_fanspeed", "start_case",
+    "startcase", "stippled_hr", "stock", "swap", "swapbar", "swapfree",
+    "swapmax", "swapperc", "sysctlbyname", "sysname", "tab", "tail",
+    "tcp_ping", "tcp_portmon", "texeci", "texecpi", "threads", "time",
+    "to_bytes", "totaldown", "totalup", "trashed_mails", "tztime", "uid_name",
+    "unflagged_mails", "unforwarded_mails", "unreplied_mails", "unseen_mails", "updates", "uppercase",
+    "upspeed", "upspeedf", "upspeedgraph", "uptime", "uptime_short", "user_names",
+    "user_number", "user_terms", "user_time", "user_times", "utime", "v6addrs",
+    "version", "voffset", "voltage_mv", "voltage_v", "wireless_ap", "wireless_bitrate",
+    "wireless_channel", "wireless_essid", "wireless_freq", "wireless_link_bar", "wireless_link_qual", "wireless_link_qual_max",
+    "wireless_link_qual_perc", "wireless_mode", "words", "xmms2_album", "xmms2_artist", "xmms2_bar",
+    "xmms2_bitrate", "xmms2_comment", "xmms2_date", "xmms2_duration", "xmms2_elapsed", "xmms2_genre",
+    "xmms2_id", "xmms2_percent", "xmms2_playlist", "xmms2_size", "xmms2_smart", "xmms2_status",
+    "xmms2_timesplayed", "xmms2_title", "xmms2_tracknr", "xmms2_url",
+}) | EXTRA_KNOWN_OBJECTS
+
+
+def _load_known_objects() -> frozenset[str]:
+    """Return the master set of real conky object names.
+
+    Parsed fresh from src/core.cc's OBJ/OBJ_ARG/OBJ_IF/OBJ_IF_ARG
+    registration macros when the repo is available, so this list stays
+    correct as core.cc changes without needing to be hand-updated. Falls
+    back to a baked-in snapshot if core.cc can't be found (e.g. this
+    script copied out of the repo tree).
+    """
+    core_cc = Path(__file__).resolve().parent.parent / "src" / "core.cc"
+    try:
+        source = core_cc.read_text(encoding="utf-8")
+    except OSError:
+        return _KNOWN_OBJECTS_SNAPSHOT
+
+    # The OBJ/OBJ_ARG/OBJ_IF/OBJ_IF_ARG #define block itself (right after
+    # gen_text_object_internal's setup) uses "a" as a placeholder macro
+    # parameter, not a real object name -- only scan past it.
+    define_end = source.find("#define END")
+    if define_end == -1:
+        return _KNOWN_OBJECTS_SNAPSHOT
+    body = source[define_end:]
+    # OBJ_ARG(...) calls are sometimes clang-format-wrapped across lines
+    # (e.g. "OBJ_ARG(\n      nvidiagraph, 0,\n      ...")," so allow
+    # whitespace (including newlines) between "(" and the object name.
+    names = set(re.findall(r"OBJ(?:_IF)?(?:_ARG)?\(\s*([a-zA-Z_]\w*)", body))
+    if not names:
+        return _KNOWN_OBJECTS_SNAPSHOT
+    return frozenset(names) | EXTRA_KNOWN_OBJECTS
+
+
+KNOWN_OBJECTS = _load_known_objects()
 
 # Objects whose first argument is commonly a Linux network interface name on
 # Linux themes (eth0, wlan0, enp3s0, ...) - Windows uses friendly adapter
@@ -390,6 +522,16 @@ def scan_objects(text: str):
 
 def classify(name: str, args: str) -> tuple[str, str] | None:
     """Return (category, message) for a non-exec object, or None if plain OK."""
+    if name not in KNOWN_OBJECTS and name not in UNSUPPORTED_EXACT and not any(
+        name.startswith(p) for p in UNSUPPORTED_PREFIXES
+    ):
+        return (
+            "UNKNOWN",
+            f"${{{name}}} isn't a real conky object in this fork's registry "
+            f"(src/core.cc) -- likely a typo, or a long-deprecated/removed "
+            f"upstream object. Not a Windows-port gap; a modern Linux conky "
+            f"build would show the same unparsed text (see issue #8).",
+        )
     if name in UNSUPPORTED_EXACT or any(name.startswith(p) for p in UNSUPPORTED_PREFIXES):
         return "UNSUPPORTED", f"${{{name}}} has no Windows equivalent (Linux-only subsystem)."
     if name in REVIEW_OBJECTS:
@@ -512,6 +654,7 @@ def format_report(report: Report, config_path: str) -> str:
         return "\n".join(lines)
 
     unsupported = [f for f in report.findings if f.category == "UNSUPPORTED"]
+    unknown = [f for f in report.findings if f.category == "UNKNOWN"]
     review = [f for f in report.findings if f.category == "REVIEW"]
     exec_auto = [f for f in report.findings if f.category == "EXEC (auto)"]
     exec_manual = [f for f in report.findings if f.category == "EXEC (manual)"]
@@ -519,7 +662,8 @@ def format_report(report: Report, config_path: str) -> str:
 
     lines.append(
         f"{report.ok_count} object(s) OK as-is, "
-        f"{len(unsupported)} unsupported, {len(review)} need review, "
+        f"{len(unsupported)} unsupported, {len(unknown)} unrecognized "
+        f"(not a real conky object), {len(review)} need review, "
         f"{len(exec_auto)} exec block(s) auto-handled, "
         f"{len(exec_manual)} exec block(s) need manual rewrite, "
         f"{len(config)} conky.config setting(s) flagged."
@@ -539,6 +683,7 @@ def format_report(report: Report, config_path: str) -> str:
 
     section("conky.config settings needing review", config)
     section("Unsupported objects - no Windows equivalent, needs manual removal/replacement", unsupported)
+    section("Unrecognized objects - not a real conky object (typo, or deprecated upstream)", unknown)
     section("Objects needing review - work, but have a Windows-specific gotcha", review)
     section("Exec blocks - auto-handled", exec_auto)
     section("Exec blocks - need manual PowerShell rewrite", exec_manual)
