@@ -14,6 +14,16 @@ section in [AGENTS.md](AGENTS.md) for how work flows from issue to
 Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
+### Added
+- `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
+  text pane + a real, live-updating `conky.exe` preview, plus a 3x3
+  anchor grid and `gap_x`/`gap_y` fields mirroring conky's own
+  positioning model. Milestones 1-2 (debounced preview, positioning
+  grid) verified: no orphaned `conky.exe` processes across repeated
+  edits/restarts, and all 9 grid positions confirmed via
+  `GetWindowRect` to land the window at the expected screen
+  corner/edge. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+
 ## [1.24.3-wp.4] - 2026-09-16
 
 ### Added
