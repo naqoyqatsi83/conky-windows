@@ -62,7 +62,6 @@ UNSUPPORTED_EXACT = {
     "image",  # BUILD_IMLIB2 is off; would need a from-scratch GDI+ backend, not a port (issue #24)
     "rss",  # needs libxml2 in addition to curl; curl itself is vendored and on by
             # default now (issue #18), but rss's own dependency isn't vendored yet
-    "mixer", "mixerbar", "mixerl", "mixerr", "if_mixer_mute",  # needs Core Audio (issue #21)
     "desktop", "desktop_number", "desktop_name",  # no stable pre-Win11 API (issue #22)
     "user_names", "user_times", "user_number", "user_terms",  # low value, not implemented (issue #23)
 }
@@ -108,6 +107,21 @@ REVIEW_OBJECTS = {
     "battery_bar": "See ${battery} note above.",
     "battery_percent": "See ${battery} note above.",
     "battery_time": "See ${battery} note above.",
+    "mixer": "Windows Core Audio has no discrete named mixer channels the "
+             "way OSS's /dev/mixer does (vol/pcm/speaker/mic/...) -- a "
+             "channel-name argument, if given, is ignored, and this "
+             "always reports the default playback device's master "
+             "volume (issue #21).",
+    "mixerbar": "See ${mixer} note above.",
+    "mixerl": "See ${mixer} note above -- reports the left channel's "
+              "volume specifically, not a named OSS channel.",
+    "mixerr": "See ${mixer} note above -- reports the right channel's "
+              "volume specifically, not a named OSS channel.",
+    "mixerlbar": "See ${mixer} note above.",
+    "mixerrbar": "See ${mixer} note above.",
+    "if_mixer_mute": "See ${mixer} note above -- checks the default "
+                     "playback device's mute state, ignoring any "
+                     "channel-name argument.",
     "wireless_mode": "Windows' Native Wifi API (wlanapi.h) doesn't expose "
                      "an ad-hoc-vs-infrastructure distinction the way "
                      "Linux's iw_operation_mode does -- always reports "

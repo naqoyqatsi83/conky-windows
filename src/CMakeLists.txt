@@ -303,10 +303,10 @@ if(OS_DARWIN)
 endif(OS_DARWIN)
 
 # Optional sources
-if(HAVE_SOUNDCARD_H)
+if(HAVE_SOUNDCARD_H OR OS_WINDOWS)
   set(mixer data/audio/mixer.cc data/audio/mixer.h)
   set(optional_sources ${optional_sources} ${mixer})
-endif(HAVE_SOUNDCARD_H)
+endif(HAVE_SOUNDCARD_H OR OS_WINDOWS)
 
 if(BUILD_AUDACIOUS)
   set(audacious data/audio/audacious.cc data/audio/audacious.h)
