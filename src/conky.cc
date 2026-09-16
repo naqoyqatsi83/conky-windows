@@ -91,10 +91,11 @@
 #ifdef BUILD_XDAMAGE
 #include <X11/extensions/Xdamage.h>
 #endif
+#endif /* BUILD_X11 */
+
 #ifdef BUILD_IMLIB2
 #include "conky-imlib2.h"
 #endif /* BUILD_IMLIB2 */
-#endif /* BUILD_X11 */
 
 #ifdef BUILD_NCURSES
 #include <ncurses.h>
@@ -1749,10 +1750,21 @@ void draw_stuff() {
 
 #ifdef BUILD_IMLIB2
   text_offset = conky::vec2i::Zero();
+  /* width/height are unused by the Windows implementation (it draws onto
+   * this port's per-frame DIB from begin_draw_text(), which already has
+   * its own width/height -- see display-windows.cc) -- window.geometry
+   * itself only exists when OWN_WINDOW is defined (X11), which it isn't
+   * on Windows (see AGENTS.md). */
+#ifdef OWN_WINDOW
   cimlib_render(text_start.x(), text_start.y(), window.geometry.width(),
                 window.geometry.height(),
                 imlib_cache_flush_interval.get(*state),
                 imlib_draw_blended.get(*state));
+#else
+  cimlib_render(text_start.x(), text_start.y(), 0, 0,
+                imlib_cache_flush_interval.get(*state),
+                imlib_draw_blended.get(*state));
+#endif /* OWN_WINDOW */
 #endif /* BUILD_IMLIB2 */
 
   for (auto output : display_outputs()) {

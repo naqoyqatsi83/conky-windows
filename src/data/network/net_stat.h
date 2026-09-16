@@ -104,11 +104,9 @@ void print_addr(struct text_object *, char *, unsigned int);
 #if defined(__linux__) || defined(_WIN32)
 void print_addrs(struct text_object *, char *, unsigned int);
 #endif /* __linux__ || _WIN32 */
-#ifdef __linux__
 #ifdef BUILD_IPV6
 void print_v6addrs(struct text_object *, char *, unsigned int);
 #endif /* BUILD_IPV6 */
-#endif /* __linux__ */
 #ifdef BUILD_GUI
 void parse_net_stat_graph_arg(struct text_object *, const char *, void *);
 double downspeedgraphval(struct text_object *);

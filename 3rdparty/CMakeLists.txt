@@ -11,3 +11,11 @@ endif(BUILD_NVIDIA_NVML)
 if(BUILD_LUA_CAIRO AND OS_WINDOWS)
   add_subdirectory(cairo)
 endif(BUILD_LUA_CAIRO AND OS_WINDOWS)
+
+if(BUILD_CURL AND OS_WINDOWS)
+  add_subdirectory(curl)
+endif(BUILD_CURL AND OS_WINDOWS)
+
+if(BUILD_RSS AND OS_WINDOWS)
+  add_subdirectory(libxml2)
+endif(BUILD_RSS AND OS_WINDOWS)

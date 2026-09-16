@@ -37,6 +37,7 @@
 #include <objbase.h>
 #include <wbemidl.h>
 #include <pdh.h>
+#include <wlanapi.h>
 
 #include <algorithm>
 #include <climits>
@@ -212,7 +213,11 @@ int update_net_stats() {
         }
 #ifdef BUILD_IPV6
         else if (sa->sa_family == AF_INET6) {
-          memcpy(&ns->addr, sa, sizeof(struct sockaddr_in6));
+          /* ns->addr is a plain "struct sockaddr" (16 bytes) -- copying a
+           * full sockaddr_in6 (28 bytes) here overflows it and corrupts
+           * the adjacent v6addrs field. The real IPv6 address data lives
+           * in ns->v6addrs (below); this just records the family. */
+          memcpy(&ns->addr, sa, sizeof(struct sockaddr));
         }
 #endif
       }
@@ -232,8 +237,173 @@ int update_net_stats() {
           strncat(ns->addrs, one, sizeof(ns->addrs) - used - 1);
         }
       }
+
+#ifdef BUILD_IPV6
+      /* ${v6addrs}: same idea as addrs above, but IPv6 -- walk the same
+       * adapter's unicast list for AF_INET6 entries.
+       *
+       * v6addr nodes must be allocated with malloc()/calloc(), not new --
+       * clear_net_stats() in net_stat.cc (shared with all platforms) frees
+       * this list with free_and_zero(), and mixing new[]/delete with
+       * malloc/free on the same allocation corrupts the heap (it compiled
+       * and ran, but crashed later on an unrelated-looking garbage
+       * pointer read once corrupted heap metadata got walked). */
+      while (ns->v6addrs != nullptr) {
+        struct v6addr *next = ns->v6addrs->next;
+        free(ns->v6addrs);
+        ns->v6addrs = next;
+      }
+      struct v6addr *v6_tail = nullptr;
+      for (auto *ua = p->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
+        SOCKADDR *ua_sa = ua->Address.lpSockaddr;
+        if (ua_sa->sa_family != AF_INET6) { continue; }
+        auto *sin6 = reinterpret_cast<sockaddr_in6 *>(ua_sa);
+
+        auto *node = static_cast<struct v6addr *>(malloc(sizeof(struct v6addr)));
+        node->addr = sin6->sin6_addr;
+        node->netmask = ua->OnLinkPrefixLength;
+        node->scope = IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)   ? 'L'
+                      : IN6_IS_ADDR_SITELOCAL(&sin6->sin6_addr) ? 'S'
+                                                                : 'G';
+        node->next = nullptr;
+
+        if (v6_tail != nullptr) {
+          v6_tail->next = node;
+        } else {
+          ns->v6addrs = node;
+        }
+        v6_tail = node;
+      }
+#endif /* BUILD_IPV6 */
     }
   }
+
+#ifdef BUILD_WLAN
+  /* ${wireless_*}: populate the same ns->essid/channel/freq/bitrate/mode/
+   * link_qual/link_qual_max/ap fields print_wireless_*() (net_stat.cc)
+   * already reads on every platform -- via the Windows Native Wifi API
+   * (wlanapi.h) instead of Linux wireless-tools ioctls. */
+  {
+    HANDLE wlan_handle = nullptr;
+    DWORD wlan_negotiated_version = 0;
+    if (WlanOpenHandle(2, nullptr, &wlan_negotiated_version, &wlan_handle) ==
+        ERROR_SUCCESS) {
+      PWLAN_INTERFACE_INFO_LIST if_list = nullptr;
+      if (WlanEnumInterfaces(wlan_handle, nullptr, &if_list) ==
+              ERROR_SUCCESS &&
+          if_list != nullptr) {
+        for (DWORD wi = 0; wi < if_list->dwNumberOfItems; ++wi) {
+          const WLAN_INTERFACE_INFO &wlan_if = if_list->InterfaceInfo[wi];
+
+          /* WlanEnumInterfaces has no friendly connection name (e.g.
+           * "Wi-Fi"), only strInterfaceDescription (the hardware model,
+           * e.g. "MediaTek Wi-Fi 7 MT7927...") -- not the same string
+           * GetAdaptersAddresses()'s FriendlyName uses as the net_stat
+           * key above. Match by GUID instead: format this interface's
+           * GUID the same way Windows formats IP_ADAPTER_ADDRESSES::
+           * AdapterName, and look for an adapter with that name. */
+          wchar_t wguid[64];
+          StringFromGUID2(wlan_if.InterfaceGuid, wguid,
+                          sizeof(wguid) / sizeof(wguid[0]));
+          char guid_str[128];
+          WideCharToMultiByte(CP_UTF8, 0, wguid, -1, guid_str,
+                              sizeof(guid_str), nullptr, nullptr);
+
+          char ifname[256] = "";
+          for (PIP_ADAPTER_ADDRESSES p = paa; p != nullptr; p = p->Next) {
+            if (p->AdapterName != nullptr &&
+                _stricmp(p->AdapterName, guid_str) == 0) {
+              WideCharToMultiByte(CP_UTF8, 0, p->FriendlyName, -1, ifname,
+                                  sizeof(ifname) - 1, nullptr, nullptr);
+              break;
+            }
+          }
+          if (ifname[0] == '\0') { continue; }
+
+          struct net_stat *ns = get_net_stat(ifname, nullptr, nullptr);
+          if (ns == nullptr) { continue; }
+
+          /* Reset to "no wireless data" defaults every cycle; overwritten
+           * below only if this interface is actually connected right
+           * now (mirrors Linux's has_essid/essid_on branch in
+           * src/data/os/linux.cc, which leaves these untouched/blank the
+           * same way when a query comes back empty). */
+          ns->essid[0] = '\0';
+          ns->channel = 0;
+          ns->freq[0] = '\0';
+          ns->bitrate[0] = '\0';
+          ns->mode[0] = '\0';
+          ns->link_qual = 0;
+          ns->link_qual_max = 0;
+          ns->ap[0] = '\0';
+
+          if (wlan_if.isState != wlan_interface_state_connected) { continue; }
+
+          DWORD conn_attr_size = 0;
+          PWLAN_CONNECTION_ATTRIBUTES conn_attr = nullptr;
+          WLAN_OPCODE_VALUE_TYPE opcode_type;
+          if (WlanQueryInterface(wlan_handle, &wlan_if.InterfaceGuid,
+                                  wlan_intf_opcode_current_connection,
+                                  nullptr, &conn_attr_size,
+                                  reinterpret_cast<PVOID *>(&conn_attr),
+                                  &opcode_type) != ERROR_SUCCESS ||
+              conn_attr == nullptr) {
+            continue;
+          }
+
+          const WLAN_ASSOCIATION_ATTRIBUTES &assoc =
+              conn_attr->wlanAssociationAttributes;
+
+          ULONG ssid_len = assoc.dot11Ssid.uSSIDLength;
+          if (ssid_len > sizeof(ns->essid) - 1) {
+            ssid_len = sizeof(ns->essid) - 1;
+          }
+          memcpy(ns->essid, assoc.dot11Ssid.ucSSID, ssid_len);
+          ns->essid[ssid_len] = '\0';
+
+          snprintf(ns->ap, sizeof(ns->ap), "%02X:%02X:%02X:%02X:%02X:%02X",
+                  assoc.dot11Bssid[0], assoc.dot11Bssid[1],
+                  assoc.dot11Bssid[2], assoc.dot11Bssid[3],
+                  assoc.dot11Bssid[4], assoc.dot11Bssid[5]);
+
+          /* wlanSignalQuality is already a 0-100 percentage (unlike
+           * Linux's driver-specific qual/qual_max range), so link_qual
+           * and link_qual_max together still produce the right percent
+           * out of print_wireless_link_qual_perc()'s existing division. */
+          ns->link_qual = static_cast<int>(assoc.wlanSignalQuality);
+          ns->link_qual_max = 100;
+
+          /* ulTxRate is in units of 100 kbps per the WLAN API docs. */
+          snprintf(ns->bitrate, sizeof(ns->bitrate), "%.1f Mb/s",
+                  assoc.ulTxRate / 1000.0);
+
+          /* Windows' WLAN API doesn't expose an ad-hoc-vs-infrastructure
+           * distinction the way iw_operation_mode does; virtually all
+           * real-world Wi-Fi is infrastructure ("Managed" in
+           * wireless-tools' naming), so use that as the one supported
+           * value rather than leaving this blank. */
+          snprintf(ns->mode, sizeof(ns->mode), "Managed");
+
+          DWORD chan_size = 0;
+          PVOID chan_data = nullptr;
+          if (WlanQueryInterface(wlan_handle, &wlan_if.InterfaceGuid,
+                                  wlan_intf_opcode_channel_number, nullptr,
+                                  &chan_size, &chan_data,
+                                  &opcode_type) == ERROR_SUCCESS &&
+              chan_data != nullptr) {
+            ns->channel =
+                static_cast<int>(*reinterpret_cast<ULONG *>(chan_data));
+            WlanFreeMemory(chan_data);
+          }
+
+          WlanFreeMemory(conn_attr);
+        }
+      }
+      if (if_list != nullptr) { WlanFreeMemory(if_list); }
+      WlanCloseHandle(wlan_handle, nullptr);
+    }
+  }
+#endif /* BUILD_WLAN */
 
   return 0;
 }

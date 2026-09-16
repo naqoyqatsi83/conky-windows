@@ -1111,6 +1111,11 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
 #ifdef _WIN32
       OBJ(addrs, &update_net_stats) parse_net_stat_arg(obj, arg, free_at_crash);
   obj->callbacks.print = &print_addrs;
+#ifdef BUILD_IPV6
+  END OBJ(v6addrs, &update_net_stats)
+      parse_net_stat_arg(obj, arg, free_at_crash);
+  obj->callbacks.print = &print_v6addrs;
+#endif /* BUILD_IPV6 */
   END
 #endif /* _WIN32 */
       OBJ_ARG(tail, nullptr, "tail needs arguments")
@@ -1281,7 +1286,7 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
       scan_graph(obj, arg, 1, FALSE, "memwithbuffers");
   obj->callbacks.graphval = &mem_with_buffers_barval;
 #endif /* BUILD_GUI*/
-#ifdef HAVE_SOUNDCARD_H
+#if defined(HAVE_SOUNDCARD_H) || defined(_WIN32)
   END OBJ(mixer, 0) parse_mixer_arg(obj, arg);
   obj->callbacks.percentage = &mixer_percentage;
   END OBJ(mixerl, 0) parse_mixer_arg(obj, arg);
@@ -1296,7 +1301,7 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
   obj->callbacks.barval = &mixerr_barval;
   END OBJ_IF(if_mixer_mute, 0) parse_mixer_arg(obj, arg);
   obj->callbacks.iftest = &check_mixer_muted;
-#endif /* HAVE_SOUNDCARD_H */
+#endif /* HAVE_SOUNDCARD_H || _WIN32 */
 #ifdef BUILD_GUI
   END OBJ(monitor, nullptr) obj->callbacks.print = &print_monitor;
   END OBJ(monitor_number, nullptr) obj->callbacks.print = &print_monitor_number;
@@ -1612,6 +1617,17 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
    * isn't implemented on Windows yet -- see
    * update_gateway_info2()/print_gateway_iface2() in
    * src/data/os/windows.cc. */
+  END OBJ(user_names, &update_users) obj->callbacks.print = &print_user_names;
+  obj->callbacks.free = &free_user_names;
+  END OBJ(user_times, &update_users) obj->callbacks.print = &print_user_times;
+  obj->callbacks.free = &free_user_times;
+  END OBJ_ARG(user_time, 0, "user time needs a console name as argument")
+      obj->data.s = STRNDUP_ARG;
+  obj->callbacks.print = &print_user_time;
+  obj->callbacks.free = &free_user_time;
+  END OBJ(user_terms, &update_users) obj->callbacks.print = &print_user_terms;
+  obj->callbacks.free = &free_user_terms;
+  END OBJ(user_number, &update_users) obj->callbacks.print = &print_user_number;
 #endif /* _WIN32 */
 #if (defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || \
      defined(__DragonFly__) || defined(__OpenBSD__)) &&     \

@@ -2,10 +2,10 @@ name: Build Windows Installer
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: write
@@ -50,7 +50,7 @@ jobs:
             -DCMAKE_C_FLAGS="-static-libgcc -static-libstdc++" \
             -DLUA_INCLUDE_DIR=/mingw64/include \
             -DLUA_LIBRARY=/mingw64/lib/liblua.dll.a \
-            -DBUILD_MPD=OFF -DBUILD_MOC=OFF -DBUILD_CMUS=OFF -DBUILD_APCUPSD=OFF
+            -DBUILD_MOC=OFF -DBUILD_CMUS=OFF
 
       - name: Pre-generate config headers (workaround MSYS2 rsp path issue)
         shell: msys2 {0}
@@ -119,6 +119,33 @@ jobs:
           # can't collide -- see conky-windows issue #10.
           mkdir -p build/src/lua_modules
           cp build/lua/libcairo.dll build/src/lua_modules/
+
+          # curl (vendored, see 3rdparty/curl) is a real hard PE import of
+          # conky.exe (src/data/network/ccurl_thread.cc, common.cc's
+          # ${stock}/${github_notifications}) -- unlike cairo.dll above,
+          # bundle_dlls' objdump walk DOES see it as a direct dependency,
+          # but only copies DLLs that already exist under /mingw64/bin, so
+          # it silently skips this one since it's vendored in-repo instead.
+          # Needed next to both conky.exe and test-conky.exe (the latter
+          # links conky_core, which includes ccurl_thread.cc) or both fail
+          # to start at all. See conky-windows issue #18.
+          cp 3rdparty/curl/lib/libcurl-x64.dll build/src/
+          cp 3rdparty/curl/lib/libcurl-x64.dll build/tests/
+
+          # libxml2 (vendored, see 3rdparty/libxml2) -- same reasoning as
+          # curl above (a real hard PE import of ${rss}'s prss.cc), plus
+          # libxml2-16.dll's own runtime deps (libiconv-2.dll,
+          # libcharset-1.dll, zlib1.dll), which are themselves vendored
+          # rather than assumed present since they're not MinGW-runtime
+          # DLLs bundle_dlls would find. See conky-windows issue #30.
+          cp 3rdparty/libxml2/lib/libxml2-16.dll build/src/
+          cp 3rdparty/libxml2/lib/libxml2-16.dll build/tests/
+          cp 3rdparty/libxml2/lib/libiconv-2.dll build/src/
+          cp 3rdparty/libxml2/lib/libiconv-2.dll build/tests/
+          cp 3rdparty/libxml2/lib/libcharset-1.dll build/src/
+          cp 3rdparty/libxml2/lib/libcharset-1.dll build/tests/
+          cp 3rdparty/libxml2/lib/zlib1.dll build/src/
+          cp 3rdparty/libxml2/lib/zlib1.dll build/tests/
 
           echo "=== Files in build/src ==="
           ls -la build/src/

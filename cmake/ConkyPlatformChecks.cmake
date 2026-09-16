@@ -546,7 +546,27 @@ if(BUILD_WLAN AND OS_LINUX)
   check_function_exists(iw_sockets_open IWLIB_SOCKETS_OPEN_FUNC)
 endif(BUILD_WLAN AND OS_LINUX)
 
-if(BUILD_PORT_MONITORS)
+if(BUILD_PORT_MONITORS AND OS_WINDOWS)
+  # getnameinfo() lives in ws2_32 on Windows -- check_function_exists()
+  # needs it in CMAKE_REQUIRED_LIBRARIES to actually link the probe.
+  # There's no netdb.h/netinet/*.h/sys/socket.h/arpa/inet.h here either;
+  # libtcp-portmon.h pulls in winsock2.h/ws2tcpip.h instead (see
+  # conky-windows issue #13), so check for those.
+  set(CMAKE_REQUIRED_LIBRARIES_SAVE ${CMAKE_REQUIRED_LIBRARIES})
+  set(CMAKE_REQUIRED_LIBRARIES ws2_32)
+  check_function_exists(getnameinfo HAVE_GETNAMEINFO)
+  set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES_SAVE})
+
+  if(NOT HAVE_GETNAMEINFO)
+    message(FATAL_ERROR "could not find getnameinfo()")
+  endif(NOT HAVE_GETNAMEINFO)
+
+  check_include_files("winsock2.h;ws2tcpip.h;iphlpapi.h" HAVE_PORTMON_HEADERS)
+
+  if(NOT HAVE_PORTMON_HEADERS)
+    message(FATAL_ERROR "missing needed network header(s) for port monitoring")
+  endif(NOT HAVE_PORTMON_HEADERS)
+elseif(BUILD_PORT_MONITORS)
   check_function_exists(getnameinfo HAVE_GETNAMEINFO)
 
   if(NOT HAVE_GETNAMEINFO)
@@ -560,7 +580,7 @@ if(BUILD_PORT_MONITORS)
   if(NOT HAVE_PORTMON_HEADERS)
     message(FATAL_ERROR "missing needed network header(s) for port monitoring")
   endif(NOT HAVE_PORTMON_HEADERS)
-endif(BUILD_PORT_MONITORS)
+endif()
 
 # Check for iconv
 if(BUILD_ICONV)
@@ -862,11 +882,16 @@ if(BUILD_NVIDIA_NVML)
   # picks the matching prebuilt stub.
 endif(BUILD_NVIDIA_NVML)
 
-if(BUILD_IMLIB2)
+if(BUILD_IMLIB2 AND OS_WINDOWS)
+  # No Imlib2 here -- src/conky-imlib2.cc's Windows branch uses GDI+
+  # (gdiplus.h, part of the Windows SDK/MinGW headers already, no
+  # vendoring needed) instead. See conky-windows issue #24.
+  set(conky_libs ${conky_libs} gdiplus)
+elseif(BUILD_IMLIB2)
   pkg_search_module(IMLIB2 REQUIRED imlib2 Imlib2)
   set(conky_libs ${conky_libs} ${IMLIB2_LIBS} ${IMLIB2_LDFLAGS})
   set(conky_includes ${conky_includes} ${IMLIB2_INCLUDE_DIRS})
-endif(BUILD_IMLIB2)
+endif()
 
 if(BUILD_JOURNAL)
   pkg_search_module(SYSTEMD REQUIRED libsystemd>=205 libsystemd-journal>=205)
@@ -880,7 +905,21 @@ if(BUILD_PULSEAUDIO)
   set(conky_includes ${conky_includes} ${PULSEAUDIO_INCLUDE_DIRS})
 endif(BUILD_PULSEAUDIO)
 
-if(WANT_CURL)
+if(WANT_CURL AND OS_WINDOWS)
+  # No pkg-config on this MinGW toolchain -- curl is vendored instead (see
+  # 3rdparty/curl, conky-windows issue #18). Unlike Cairo (3rdparty/cairo,
+  # resolved dynamically at runtime to avoid a hard PE import), curl is a
+  # normal hard link dependency here: ${curl}/${rss}/${stock}/
+  # ${github_notifications} are all compile-time opt-ins already gated
+  # behind BUILD_CURL/BUILD_RSS, so there's no "keep starting without it"
+  # requirement the way Cairo needed for always-compiled-in Lua draw hook
+  # support. Referenced by raw path rather than the curl_windows target
+  # from 3rdparty/curl/CMakeLists.txt because that subdirectory hasn't
+  # been processed yet at this point in the configure (same reason the
+  # Cairo branch above uses raw paths too).
+  set(conky_includes ${conky_includes} "${CMAKE_SOURCE_DIR}/3rdparty/curl/include")
+  set(conky_libs ${conky_libs} "${CMAKE_SOURCE_DIR}/3rdparty/curl/lib/libcurl.dll.a")
+elseif(WANT_CURL)
   pkg_check_modules(CURL libcurl)
   if(CURL_FOUND)
     set(conky_libs ${conky_libs} ${CURL_LINK_LIBRARIES})
@@ -954,7 +993,7 @@ if(WANT_CURL)
     set(conky_libs ${conky_libs} ${CURL_LIBRARIES})
     conky_append_include_dirs(conky_includes ${CURL_INCLUDE_DIRS})
   endif()
-endif(WANT_CURL)
+endif()
 
 # Common libraries
 if(WANT_GLIB)
@@ -963,7 +1002,16 @@ if(WANT_GLIB)
   set(conky_includes ${conky_includes} ${GLIB_INCLUDE_DIRS})
 endif(WANT_GLIB)
 
-if(WANT_LIBXML2)
+if(WANT_LIBXML2 AND OS_WINDOWS)
+  # No pkg-config on this MinGW toolchain -- libxml2 is vendored instead
+  # (see 3rdparty/libxml2, conky-windows issue #30). Referenced by raw
+  # path rather than the libxml2_windows target from 3rdparty/libxml2/
+  # CMakeLists.txt because that subdirectory hasn't been processed yet at
+  # this point in the configure (same reason the Cairo/curl branches
+  # above use raw paths too).
+  set(conky_includes ${conky_includes} "${CMAKE_SOURCE_DIR}/3rdparty/libxml2/include")
+  set(conky_libs ${conky_libs} "${CMAKE_SOURCE_DIR}/3rdparty/libxml2/lib/libxml2.dll.a")
+elseif(WANT_LIBXML2)
   include(FindLibXml2)
 
   if(NOT LIBXML2_FOUND)
@@ -972,7 +1020,7 @@ if(WANT_LIBXML2)
 
   set(conky_libs ${conky_libs} ${LIBXML2_LIBRARIES})
   conky_append_include_dirs(conky_includes ${LIBXML2_INCLUDE_DIR})
-endif(WANT_LIBXML2)
+endif()
 
 # Look for doc generation programs
 if(BUILD_DOCS)

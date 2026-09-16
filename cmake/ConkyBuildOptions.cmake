@@ -154,13 +154,13 @@ set(MAX_NET_INTERFACES "256" CACHE STRING "Maximum number of network devices")
 
 # Platform specific options Linux only
 cmake_dependent_option(BUILD_PORT_MONITORS "Build TCP portmon support" true
-  "OS_LINUX" false)
+  "OS_LINUX OR OS_WINDOWS" false)
 cmake_dependent_option(BUILD_IBM "Support for IBM/Lenovo notebooks" true
   "OS_LINUX" false)
 cmake_dependent_option(BUILD_HDDTEMP "Support for hddtemp" true
   "OS_LINUX" false)
 cmake_dependent_option(BUILD_IPV6 "Enable if you want IPv6 support" true
-  "OS_LINUX" false)
+  "OS_LINUX OR OS_WINDOWS" false)
 
 cmake_dependent_option(BUILD_NVIDIA_NVML "Enable Nvidia variables with NVML" false
   "OS_LINUX OR WIN32" false)
@@ -185,9 +185,13 @@ cmake_dependent_option(
 option(ENABLE_RUNTIME_TWEAKS "Enable runtime environment checks for better system integration" true)
 
 # Optional features etc
-option(BUILD_WLAN "Enable wireless support" false)
+# Windows gets a real implementation via the Native Wifi API (wlanapi.h,
+# src/data/os/windows.cc) so it can default on; other platforms keep the
+# historical opt-in default (see conky-windows issue #20).
 if(OS_WINDOWS)
-  set(BUILD_WLAN false CACHE BOOL "Enable wireless support" FORCE)
+  option(BUILD_WLAN "Enable wireless support" true)
+else()
+  option(BUILD_WLAN "Enable wireless support" false)
 endif()
 
 option(BUILD_BUILTIN_CONFIG "Enable builtin default configuration" true)
@@ -248,9 +252,13 @@ dependent_option(BUILD_XDBE "Build Xdbe (double-buffer) support" true
 dependent_option(BUILD_XFT "Build Xft (freetype fonts) support" true
   "BUILD_X11" false
   "Xft (freetype font) support requires X11")
+# Windows gets a from-scratch GDI+ backend for ${image} instead of Imlib2
+# itself (X11-adjacent, not a good porting target -- see conky-windows
+# issue #24, same shape as the Cairo work in #10), so it isn't tied to
+# BUILD_X11 the way other platforms are.
 dependent_option(BUILD_IMLIB2 "Enable Imlib2 support" true
-  "BUILD_X11" false
-  "Imlib2 support requires X11")
+  "BUILD_X11 OR OS_WINDOWS" false
+  "Imlib2 support requires X11 (or a Windows GDI+ backend)")
 dependent_option(BUILD_XSHAPE "Enable Xshape support" true
   "BUILD_X11" false
   "Xshape support requires X11")
@@ -309,11 +317,27 @@ option(BUILD_MOC "Enable if you want MOC (music player) support" true)
 
 option(BUILD_XMMS2 "Enable if you want XMMS2 (music player) support" false)
 
-option(BUILD_CURL "Enable if you want Curl support" false)
+# Windows gets curl vendored (3rdparty/curl, see conky-windows issue #18)
+# so it can default on; other platforms keep the historical opt-in
+# default (curl is a real, discoverable system dependency there via
+# pkg-config/find_package(CURL), just not assumed present).
+if(OS_WINDOWS)
+  option(BUILD_CURL "Enable if you want Curl support" true)
+else()
+  option(BUILD_CURL "Enable if you want Curl support" false)
+endif()
 
-dependent_option(BUILD_RSS "Enable if you want RSS support" false
-  "BUILD_CURL" false
-  "RSS depends on Curl support")
+# Windows gets libxml2 vendored too (3rdparty/libxml2, issue #30), same
+# reasoning as BUILD_CURL above.
+if(OS_WINDOWS)
+  dependent_option(BUILD_RSS "Enable if you want RSS support" true
+    "BUILD_CURL" false
+    "RSS depends on Curl support")
+else()
+  dependent_option(BUILD_RSS "Enable if you want RSS support" false
+    "BUILD_CURL" false
+    "RSS depends on Curl support")
+endif()
 
 option(BUILD_APCUPSD "Enable APCUPSD support" true)
 

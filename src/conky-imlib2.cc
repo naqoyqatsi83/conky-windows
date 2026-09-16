@@ -29,19 +29,23 @@
 #include "logging.h"
 #include "output/display-output.hh"
 
-#include <Imlib2.h>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 
+#ifndef _WIN32
+#include <Imlib2.h>
 #include "lua/x11-settings.h"
 #include "output/x11.h"
+#endif /* _WIN32 */
 
 struct image_list_s {
   char name[1024];
+#ifndef _WIN32
   Imlib_Image image;
+#endif /* _WIN32 */
   int x, y, w, h;
   int wh_set;
   char no_cache;
@@ -51,11 +55,6 @@ struct image_list_s {
 
 struct image_list_s *image_list_start, *image_list_end;
 std::array<std::array<int, 2>, 100> saved_coordinates;
-
-/* areas to update */
-Imlib_Updates updates, current_update;
-/* our virtual framebuffer image we draw into */
-Imlib_Image buffer, image;
 
 conky::range_config_setting<unsigned int> imlib_cache_flush_interval(
     "imlib_cache_flush_interval", 0, std::numeric_limits<unsigned int>::max(),
@@ -67,6 +66,13 @@ conky::simple_config_setting<bool> imlib_draw_blended("draw_blended", true,
 conky::range_config_setting<unsigned long> imlib_cache_size(
     "imlib_cache_size", 0, std::numeric_limits<unsigned long>::max(),
     4096 * 1024, true);
+
+#ifndef _WIN32
+
+/* areas to update */
+Imlib_Updates updates, current_update;
+/* our virtual framebuffer image we draw into */
+Imlib_Image buffer, image;
 
 namespace {
 Imlib_Context context;
@@ -101,6 +107,89 @@ void cimlib_deinit() {
   context = nullptr;
 }
 
+#else /* _WIN32 */
+
+#include <gdiplus.h>
+#include <unordered_map>
+
+namespace {
+/* Per-path decoded-image cache, mirroring Imlib2's own internal cache on
+ * the Linux side (imlib_load_image() is cheap on a cache hit there; this
+ * is the equivalent for Gdiplus::Bitmap, keyed the same way -- by path). */
+struct CachedImage {
+  std::unique_ptr<Gdiplus::Bitmap> bitmap;
+  time_t loaded_at = 0;
+};
+std::unordered_map<std::string, CachedImage> g_image_cache;
+
+ULONG_PTR g_gdiplus_token = 0;
+bool g_gdiplus_started = false;
+
+/* cimlib_render()'s x/y are the same screen-absolute origin (text_start)
+ * every ${image} coordinate is relative to -- captured here so
+ * cimlib_draw_windows() (called later, from begin_draw_text(), which has
+ * no access to text_start) can reproduce it. */
+int g_render_origin_x = 0, g_render_origin_y = 0;
+bool g_draw_blended = true;
+unsigned int g_cimlib_cache_flush_last = 0;
+
+std::wstring to_wide(const char *utf8) {
+  if (utf8 == nullptr || utf8[0] == '\0') { return L""; }
+  int len = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+  if (len <= 0) { return L""; }
+  std::wstring wide(static_cast<size_t>(len) - 1, L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, utf8, -1, &wide[0], len);
+  return wide;
+}
+
+/* Returns the cached bitmap for `path`, (re)loading it from disk if it's
+ * not cached yet or `force_reload` says the caller's no_cache/
+ * flush_interval settings require a fresh decode this frame. nullptr on
+ * load failure (bad path, unsupported format, etc). */
+Gdiplus::Bitmap *get_cached_image(const std::string &path, bool force_reload) {
+  auto it = g_image_cache.find(path);
+  if (it != g_image_cache.end() && !force_reload) {
+    return it->second.bitmap.get();
+  }
+
+  std::wstring wpath = to_wide(path.c_str());
+  auto bitmap = std::make_unique<Gdiplus::Bitmap>(wpath.c_str());
+  if (bitmap->GetLastStatus() != Gdiplus::Ok) {
+    static bool reported = false;
+    if (!reported) { LOG_ERROR("unable to load image '{}'", path); }
+    reported = true;
+    g_image_cache.erase(path);
+    return nullptr;
+  }
+
+  CachedImage entry;
+  entry.bitmap = std::move(bitmap);
+  entry.loaded_at = time(nullptr);
+  Gdiplus::Bitmap *raw = entry.bitmap.get();
+  g_image_cache[path] = std::move(entry);
+  return raw;
+}
+}  // namespace
+
+void cimlib_init() {
+  if (g_gdiplus_started) { return; }
+  Gdiplus::GdiplusStartupInput input;
+  if (Gdiplus::GdiplusStartup(&g_gdiplus_token, &input, nullptr) ==
+      Gdiplus::Ok) {
+    g_gdiplus_started = true;
+  }
+}
+
+void cimlib_deinit() {
+  if (!g_gdiplus_started) { return; }
+  cimlib_cleanup();
+  g_image_cache.clear();
+  Gdiplus::GdiplusShutdown(g_gdiplus_token);
+  g_gdiplus_started = false;
+}
+
+#endif /* _WIN32 */
+
 void cimlib_cleanup() {
   struct image_list_s *cur = image_list_start, *last = nullptr;
   while (cur != nullptr) {
@@ -126,7 +215,7 @@ void cimlib_add_image(const char *args) {
     delete[] cur;
     return;
   }
-  strncpy(cur->name, to_real_path(cur->name).c_str(), 1024);
+  strncpy(cur->name, to_real_path(cur->name).string().c_str(), 1024);
   cur->name[1023] = 0;
   //
   // now we check for optional args
@@ -176,6 +265,7 @@ void cimlib_add_image(const char *args) {
   }
 }
 
+#ifndef _WIN32
 static void cimlib_draw_image(struct image_list_s *cur, int *clip_x,
                               int *clip_y, int *clip_x2, int *clip_y2) {
   int w, h;
@@ -289,6 +379,74 @@ void cimlib_render(int x, int y, int width, int height, uint32_t flush_interval,
   /* don't need that temporary buffer image anymore */
   imlib_free_image();
 }
+
+#else /* _WIN32 */
+
+void cimlib_render(int x, int y, int /*width*/, int /*height*/,
+                   uint32_t flush_interval, bool draw_blended) {
+  /* Unlike the X11/Imlib2 path, actual drawing happens per-frame in
+   * cimlib_draw_windows(), called from display-windows.cc's
+   * begin_draw_text() -- there's no persistent drawable to render onto
+   * here the way X11 has window.drawable; this port's whole DIB is
+   * recreated every begin_draw_text() call. This function just records
+   * the origin ${image} coordinates are relative to (text_start, the
+   * same origin used for text) and runs the periodic whole-cache flush,
+   * mirroring the Linux path's imlib_set_cache_size(0)/imlib_set_cache_
+   * size(size) trick. */
+  g_render_origin_x = x;
+  g_render_origin_y = y;
+  g_draw_blended = draw_blended;
+
+  time_t now = time(nullptr);
+  if (flush_interval != 0u &&
+      static_cast<unsigned int>(now) - flush_interval >
+          g_cimlib_cache_flush_last) {
+    g_image_cache.clear();
+    g_cimlib_cache_flush_last = static_cast<unsigned int>(now);
+    LOG_DEBUG("flushing imlib2-windows image cache ({})", now);
+  }
+}
+
+void cimlib_draw_windows(HDC hdc, int win_w, int win_h, int window_left,
+                         int window_top) {
+  if (image_list_start == nullptr || !g_gdiplus_started) { return; }
+
+  Gdiplus::Graphics graphics(hdc);
+  graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+  graphics.SetCompositingMode(g_draw_blended
+                                  ? Gdiplus::CompositingModeSourceOver
+                                  : Gdiplus::CompositingModeSourceCopy);
+  /* Clip to the DIB bounds -- an ${image} positioned or sized past the
+   * window edge (a common theme mistake) would otherwise be silently
+   * dropped by GDI+ rather than clipped like Imlib2 does. */
+  graphics.SetClip(Gdiplus::Rect(0, 0, win_w, win_h));
+
+  time_t now = time(nullptr);
+  for (struct image_list_s *cur = image_list_start; cur != nullptr;
+       cur = cur->next) {
+    bool force_reload =
+        (cur->no_cache != 0) ||
+        (cur->flush_interval != 0 &&
+         static_cast<int>(now) % cur->flush_interval == 0);
+
+    Gdiplus::Bitmap *bitmap = get_cached_image(cur->name, force_reload);
+    if (bitmap == nullptr) { continue; }
+
+    if (cur->wh_set == 0) {
+      cur->w = dpi_scale(static_cast<int>(bitmap->GetWidth()));
+      cur->h = dpi_scale(static_cast<int>(bitmap->GetHeight()));
+    }
+
+    int screen_x = g_render_origin_x + cur->x;
+    int screen_y = g_render_origin_y + cur->y;
+    int draw_x = screen_x - window_left;
+    int draw_y = screen_y - window_top;
+
+    graphics.DrawImage(bitmap, draw_x, draw_y, cur->w, cur->h);
+  }
+}
+
+#endif /* _WIN32 */
 
 void print_image_callback(struct text_object *obj, char *, unsigned int) {
   cimlib_add_image(obj->data.s);

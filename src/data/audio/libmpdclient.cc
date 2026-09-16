@@ -61,7 +61,22 @@
 #endif
 
 #ifndef SOCK_CLOEXEC
+#ifdef WIN32
+/* Windows' socket() has no SOCK_CLOEXEC-equivalent bit in its `type`
+ * argument -- handle inheritance works differently there (WSA_FLAG_NO_
+ * HANDLE_INHERIT on WSASocket(), not needed here since conky doesn't
+ * fork/exec with this socket held open). O_CLOEXEC isn't even the right
+ * *kind* of flag (it's an fcntl() open-mode bit, not a socket type bit)
+ * and happened to be some other MinGW header's unrelated nonzero value
+ * (0x80000) -- ORing it into SOCK_STREAM produced an invalid socket type
+ * bitmask, and Windows' socket() correctly rejected it with
+ * WSAESOCKTNOSUPPORT (10044), which read back through strerror(errno)
+ * (meaningless for a WSA error) as a misleading "Resource temporarily
+ * unavailable". Confirmed via WSAGetLastError() while debugging. */
+#define SOCK_CLOEXEC 0
+#else
 #define SOCK_CLOEXEC O_CLOEXEC
+#endif /* WIN32 */
 #endif /* SOCK_CLOEXEC */
 
 /* (bits + 1) / 3 (plus the sign character) */
@@ -127,6 +142,12 @@ static int do_connect_fail(mpd_Connection *connection,
 }
 #endif /* !WIN32 */
 
+#ifndef WIN32
+/* Unix domain socket connect -- no Windows equivalent worth adding here.
+ * AF_UNIX sockets exist on modern Windows (afunix.h, Win10 1803+) but
+ * MPD-over-Windows is a remote-TCP-client use case (NAS/Raspberry Pi
+ * server, desktop client), not a local-socket one, so this just isn't
+ * called on Windows (see the *host == '/' guards below). */
 static int uds_connect(mpd_Connection *connection, const char *host,
                        float timeout) {
   struct sockaddr_un addr{};
@@ -158,6 +179,7 @@ static int uds_connect(mpd_Connection *connection, const char *host,
 
   return 0;
 }
+#endif /* !WIN32 */
 
 #ifdef MPD_HAVE_GAI
 static int mpd_connect(mpd_Connection *connection, const char *host, int port,
@@ -168,7 +190,9 @@ static int mpd_connect(mpd_Connection *connection, const char *host, int port,
   struct addrinfo *res = nullptr;
   struct addrinfo *addrinfo = nullptr;
 
+#ifndef WIN32
   if (*host == '/') { return uds_connect(connection, host, timeout); }
+#endif
 
   /* Setup hints */
   hints.ai_flags = AI_ADDRCONFIG;
@@ -238,7 +262,9 @@ static int mpd_connect(mpd_Connection *connection, const char *host, int port,
   int destlen;
   struct sockaddr_in sin;
 
+#ifndef WIN32
   if (*host == '/') return uds_connect(connection, host, timeout);
+#endif
 
 #ifdef HAVE_GETHOSTBYNAME_R
   if (gethostbyname_r(host, &he, hostbuff, sizeof(hostbuff), &he_res,

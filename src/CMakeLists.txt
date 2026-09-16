@@ -268,13 +268,18 @@ if(OS_WINDOWS)
     data/os/windows.h
     data/os/windows/gpu.cc
     data/os/windows/gpu.h
+    data/users.cc
+    data/users.h
     output/display-windows.cc
     output/display-windows.hh
     output/cairo_dynamic.cc
     output/cairo_dynamic.hh
   )
   set(optional_sources ${optional_sources} ${windows_sources})
-  list(APPEND conky_libs ws2_32 iphlpapi pdh ole32 wbemuuid)
+  list(APPEND conky_libs ws2_32 iphlpapi pdh ole32 wbemuuid wtsapi32)
+  if(BUILD_WLAN)
+    list(APPEND conky_libs wlanapi)
+  endif()
 endif(OS_WINDOWS)
 
 if(OS_DARWIN)
@@ -300,10 +305,10 @@ if(OS_DARWIN)
 endif(OS_DARWIN)
 
 # Optional sources
-if(HAVE_SOUNDCARD_H)
+if(HAVE_SOUNDCARD_H OR OS_WINDOWS)
   set(mixer data/audio/mixer.cc data/audio/mixer.h)
   set(optional_sources ${optional_sources} ${mixer})
-endif(HAVE_SOUNDCARD_H)
+endif(HAVE_SOUNDCARD_H OR OS_WINDOWS)
 
 if(BUILD_AUDACIOUS)
   set(audacious data/audio/audacious.cc data/audio/audacious.h)
@@ -351,6 +356,14 @@ if(BUILD_PORT_MONITORS)
     data/network/libtcp-portmon.h
   )
   target_link_libraries(tcp-portmon PRIVATE spdlog::spdlog)
+  if(OS_WINDOWS)
+    # getnameinfo()/ntohs() (ws2_32) and GetExtendedTcpTable() (iphlpapi)
+    # need to be linked directly into this static lib's own dependency
+    # graph -- conky_libs already lists ws2_32/iphlpapi, but they appear
+    # before tcp-portmon on the final link line and GNU ld doesn't revisit
+    # earlier import libraries for a later archive's undefined symbols.
+    target_link_libraries(tcp-portmon PRIVATE ws2_32 iphlpapi)
+  endif()
   set(conky_libs ${conky_libs} tcp-portmon)
   set(port_monitors
     data/network/tcp-portmon.cc

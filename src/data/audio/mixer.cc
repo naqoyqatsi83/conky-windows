@@ -27,14 +27,140 @@
  *
  */
 
-#include <ctype.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
 #include "../../conky.h"
 #include "../../content/specials.h"
 #include "../../content/text_object.h"
 #include "../../logging.h"
+
+#ifdef _WIN32
+/* Windows volume control lives in Core Audio (IAudioEndpointVolume via
+ * IMMDeviceEnumerator/IMMDevice), a COM-based API with no discrete named
+ * mixer channels the way OSS's /dev/mixer ioctls have (SOUND_DEVICE_NAMES:
+ * "vol", "pcm", "speaker", "mic", ...). This implementation always targets
+ * the default playback device's master volume, ignoring the requested
+ * channel name -- exactly what most themes want from a bare ${mixer}
+ * anyway. See conky-windows issue #21. */
+#define INITGUID
+#include <mmdeviceapi.h>
+#include <endpointvolume.h>
+
+namespace {
+IAudioEndpointVolume *g_endpoint_volume = nullptr;
+bool g_mixer_com_initialized = false;
+
+IAudioEndpointVolume *get_endpoint_volume() {
+  if (g_endpoint_volume != nullptr) { return g_endpoint_volume; }
+
+  if (!g_mixer_com_initialized) {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) { return nullptr; }
+    g_mixer_com_initialized = true;
+  }
+
+  IMMDeviceEnumerator *enumerator = nullptr;
+  HRESULT hr =
+      CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL,
+                       IID_IMMDeviceEnumerator,
+                       reinterpret_cast<void **>(&enumerator));
+  if (FAILED(hr)) { return nullptr; }
+
+  IMMDevice *device = nullptr;
+  hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+  enumerator->Release();
+  if (FAILED(hr)) { return nullptr; }
+
+  hr = device->Activate(IID_IAudioEndpointVolume, CLSCTX_ALL, nullptr,
+                        reinterpret_cast<void **>(&g_endpoint_volume));
+  device->Release();
+  if (FAILED(hr)) {
+    g_endpoint_volume = nullptr;
+    return nullptr;
+  }
+
+  return g_endpoint_volume;
+}
+
+uint8_t mixer_master_percentage() {
+  IAudioEndpointVolume *vol = get_endpoint_volume();
+  if (vol == nullptr) { return 0; }
+  float level = 0.0f;
+  if (FAILED(vol->GetMasterVolumeLevelScalar(&level))) { return 0; }
+  return static_cast<uint8_t>(level * 100.0f + 0.5f);
+}
+
+uint8_t mixer_channel_percentage(UINT channel) {
+  IAudioEndpointVolume *vol = get_endpoint_volume();
+  if (vol == nullptr) { return 0; }
+  UINT channel_count = 0;
+  if (FAILED(vol->GetChannelCount(&channel_count)) ||
+      channel >= channel_count) {
+    return mixer_master_percentage();
+  }
+  float level = 0.0f;
+  if (FAILED(vol->GetChannelVolumeLevelScalar(channel, &level))) {
+    return 0;
+  }
+  return static_cast<uint8_t>(level * 100.0f + 0.5f);
+}
+}  // namespace
+
+int mixer_init(const char * /*name*/) { return 0; }
+
+uint8_t mixer_percentage(struct text_object * /*obj*/) {
+  return mixer_master_percentage();
+}
+
+uint8_t mixerl_percentage(struct text_object * /*obj*/) {
+  return mixer_channel_percentage(0);
+}
+
+uint8_t mixerr_percentage(struct text_object * /*obj*/) {
+  return mixer_channel_percentage(1);
+}
+
+int check_mixer_muted(struct text_object * /*obj*/) {
+  IAudioEndpointVolume *vol = get_endpoint_volume();
+  if (vol == nullptr) { return 0; }
+  BOOL mute = FALSE;
+  if (FAILED(vol->GetMute(&mute))) { return 0; }
+  return mute ? 1 : 0;
+}
+
+void parse_mixer_arg(struct text_object *obj, const char *arg) {
+  obj->data.l = mixer_init(arg);
+}
+
+void scan_mixer_bar(struct text_object *obj, const char *arg) {
+  char buf1[64];
+  int n;
+
+  if (arg && sscanf(arg, "%63s %n", buf1, &n) >= 1) {
+    obj->data.i = mixer_init(buf1);
+    scan_bar(obj, arg + n, 100);
+  } else {
+    obj->data.i = mixer_init(nullptr);
+    scan_bar(obj, arg, 100);
+  }
+}
+
+double mixer_barval(struct text_object * /*obj*/) {
+  return mixer_master_percentage();
+}
+
+double mixerl_barval(struct text_object * /*obj*/) {
+  return mixer_channel_percentage(0);
+}
+
+double mixerr_barval(struct text_object * /*obj*/) {
+  return mixer_channel_percentage(1);
+}
+
+#else /* !_WIN32 */
+
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
 
 #ifdef HAVE_SOUNDCARD_H
 #if defined(__linux__)
@@ -149,3 +275,5 @@ double mixerl_barval(struct text_object *obj) {
 double mixerr_barval(struct text_object *obj) {
   return mixer_to_255(obj->data.i, mixer_get_right(obj->data.i));
 }
+
+#endif /* !_WIN32 */
