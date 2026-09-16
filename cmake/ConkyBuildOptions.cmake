@@ -323,9 +323,17 @@ else()
   option(BUILD_CURL "Enable if you want Curl support" false)
 endif()
 
-dependent_option(BUILD_RSS "Enable if you want RSS support" false
-  "BUILD_CURL" false
-  "RSS depends on Curl support")
+# Windows gets libxml2 vendored too (3rdparty/libxml2, issue #30), same
+# reasoning as BUILD_CURL above.
+if(OS_WINDOWS)
+  dependent_option(BUILD_RSS "Enable if you want RSS support" true
+    "BUILD_CURL" false
+    "RSS depends on Curl support")
+else()
+  dependent_option(BUILD_RSS "Enable if you want RSS support" false
+    "BUILD_CURL" false
+    "RSS depends on Curl support")
+endif()
 
 option(BUILD_APCUPSD "Enable APCUPSD support" true)
 

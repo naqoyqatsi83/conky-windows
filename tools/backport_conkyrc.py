@@ -60,22 +60,14 @@ UNSUPPORTED_EXACT = {
     "running_threads",  # threads is supported (see REVIEW below), but "running" (ready-state)
                         # per-thread status isn't exposed by the Toolhelp32 API this port uses
     "image",  # BUILD_IMLIB2 is off; would need a from-scratch GDI+ backend, not a port (issue #24)
-    "rss",  # needs libxml2 in addition to curl; curl itself is vendored and on by
-            # default now (issue #18), but rss's own dependency isn't vendored yet
     "desktop", "desktop_number", "desktop_name",  # no stable pre-Win11 API (issue #22)
     "user_names", "user_times", "user_number", "user_terms",  # low value, not implemented (issue #23)
 }
 
 # Per-object overrides for UNSUPPORTED_EXACT's generic "Linux-only
 # subsystem" message, for the handful of cases where that phrasing isn't
-# accurate (e.g. rss: not Linux-only, just missing a second vendored
-# dependency on top of curl).
-UNSUPPORTED_MESSAGES = {
-    "rss": "${rss} needs libxml2 in addition to curl (which is now vendored "
-           "and on by default, issue #18) -- libxml2 itself isn't vendored "
-           "for this toolchain yet. Not a Linux-only subsystem, just an "
-           "unfinished dependency.",
-}
+# accurate.
+UNSUPPORTED_MESSAGES = {}
 
 # Objects that work on Windows but have a platform-specific gotcha worth
 # flagging for manual review rather than silently passing.

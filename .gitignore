@@ -33,6 +33,7 @@ src/colour-names.hh
 # before this exception existed; libcurl.dll.a needed one, see issue #18)
 !3rdparty/cairo/lib/*.a
 !3rdparty/curl/lib/*.a
+!3rdparty/libxml2/lib/*.a
 !3rdparty/nvml/**/lib/*.a
 
 # Don't ignore vendored Cairo (Windows-only, see 3rdparty/cairo/CMakeLists.txt)

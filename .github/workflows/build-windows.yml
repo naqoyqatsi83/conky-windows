@@ -132,6 +132,21 @@ jobs:
           cp 3rdparty/curl/lib/libcurl-x64.dll build/src/
           cp 3rdparty/curl/lib/libcurl-x64.dll build/tests/
 
+          # libxml2 (vendored, see 3rdparty/libxml2) -- same reasoning as
+          # curl above (a real hard PE import of ${rss}'s prss.cc), plus
+          # libxml2-16.dll's own runtime deps (libiconv-2.dll,
+          # libcharset-1.dll, zlib1.dll), which are themselves vendored
+          # rather than assumed present since they're not MinGW-runtime
+          # DLLs bundle_dlls would find. See conky-windows issue #30.
+          cp 3rdparty/libxml2/lib/libxml2-16.dll build/src/
+          cp 3rdparty/libxml2/lib/libxml2-16.dll build/tests/
+          cp 3rdparty/libxml2/lib/libiconv-2.dll build/src/
+          cp 3rdparty/libxml2/lib/libiconv-2.dll build/tests/
+          cp 3rdparty/libxml2/lib/libcharset-1.dll build/src/
+          cp 3rdparty/libxml2/lib/libcharset-1.dll build/tests/
+          cp 3rdparty/libxml2/lib/zlib1.dll build/src/
+          cp 3rdparty/libxml2/lib/zlib1.dll build/tests/
+
           echo "=== Files in build/src ==="
           ls -la build/src/
 

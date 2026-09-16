@@ -997,7 +997,16 @@ if(WANT_GLIB)
   set(conky_includes ${conky_includes} ${GLIB_INCLUDE_DIRS})
 endif(WANT_GLIB)
 
-if(WANT_LIBXML2)
+if(WANT_LIBXML2 AND OS_WINDOWS)
+  # No pkg-config on this MinGW toolchain -- libxml2 is vendored instead
+  # (see 3rdparty/libxml2, conky-windows issue #30). Referenced by raw
+  # path rather than the libxml2_windows target from 3rdparty/libxml2/
+  # CMakeLists.txt because that subdirectory hasn't been processed yet at
+  # this point in the configure (same reason the Cairo/curl branches
+  # above use raw paths too).
+  set(conky_includes ${conky_includes} "${CMAKE_SOURCE_DIR}/3rdparty/libxml2/include")
+  set(conky_libs ${conky_libs} "${CMAKE_SOURCE_DIR}/3rdparty/libxml2/lib/libxml2.dll.a")
+elseif(WANT_LIBXML2)
   include(FindLibXml2)
 
   if(NOT LIBXML2_FOUND)
@@ -1006,7 +1015,7 @@ if(WANT_LIBXML2)
 
   set(conky_libs ${conky_libs} ${LIBXML2_LIBRARIES})
   conky_append_include_dirs(conky_includes ${LIBXML2_INCLUDE_DIR})
-endif(WANT_LIBXML2)
+endif()
 
 # Look for doc generation programs
 if(BUILD_DOCS)
