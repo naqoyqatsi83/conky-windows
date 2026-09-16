@@ -27,6 +27,12 @@ src/colour-names.hh
 
 # Don't ignore NVML library
 !3rdparty/nvml/**/lib/*.so
+
+# Don't ignore vendored Windows import libraries (matched by the blanket
+# *.a rule above -- libcairo.dll.a was already tracked via a force-add
+# before this exception existed; libcurl.dll.a needed one, see issue #18)
+!3rdparty/cairo/lib/*.a
+!3rdparty/curl/lib/*.a
 !3rdparty/nvml/**/lib/*.a
 
 # Don't ignore vendored Cairo (Windows-only, see 3rdparty/cairo/CMakeLists.txt)
