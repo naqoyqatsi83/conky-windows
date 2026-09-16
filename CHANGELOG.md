@@ -15,6 +15,10 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${mixer}`/`${mixerbar}`/`${mixerl}`/`${mixerr}`/`${if_mixer_mute}` on
+  Windows, via Core Audio (`IAudioEndpointVolume`). No discrete named
+  mixer channels like OSS, so a channel-name argument is ignored in
+  favor of the default playback device's master volume/mute state. [#21](https://github.com/naqoyqatsi83/conky-windows/issues/21)
 - `${wireless_*}` family on Windows (10 objects), via the Native Wifi API
   (`wlanapi.h`). Verified the adapter-detection and not-connected paths
   against real Wi-Fi hardware; the actively-connected data path wasn't
