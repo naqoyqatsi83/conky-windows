@@ -882,11 +882,16 @@ if(BUILD_NVIDIA_NVML)
   # picks the matching prebuilt stub.
 endif(BUILD_NVIDIA_NVML)
 
-if(BUILD_IMLIB2)
+if(BUILD_IMLIB2 AND OS_WINDOWS)
+  # No Imlib2 here -- src/conky-imlib2.cc's Windows branch uses GDI+
+  # (gdiplus.h, part of the Windows SDK/MinGW headers already, no
+  # vendoring needed) instead. See conky-windows issue #24.
+  set(conky_libs ${conky_libs} gdiplus)
+elseif(BUILD_IMLIB2)
   pkg_search_module(IMLIB2 REQUIRED imlib2 Imlib2)
   set(conky_libs ${conky_libs} ${IMLIB2_LIBS} ${IMLIB2_LDFLAGS})
   set(conky_includes ${conky_includes} ${IMLIB2_INCLUDE_DIRS})
-endif(BUILD_IMLIB2)
+endif()
 
 if(BUILD_JOURNAL)
   pkg_search_module(SYSTEMD REQUIRED libsystemd>=205 libsystemd-journal>=205)

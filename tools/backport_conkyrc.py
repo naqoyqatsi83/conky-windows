@@ -59,7 +59,6 @@ UNSUPPORTED_EXACT = {
                             # and io needs BUILD_IOSTATS, off for Windows
     "running_threads",  # threads is supported (see REVIEW below), but "running" (ready-state)
                         # per-thread status isn't exposed by the Toolhelp32 API this port uses
-    "image",  # BUILD_IMLIB2 is off; would need a from-scratch GDI+ backend, not a port (issue #24)
     "desktop", "desktop_number", "desktop_name",  # no stable pre-Win11 API (issue #22)
 }
 

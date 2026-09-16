@@ -42,6 +42,10 @@
 #include "gui.h"
 #endif
 
+#ifdef BUILD_IMLIB2
+#include "../conky-imlib2.h"
+#endif
+
 /* Crash diagnostic: log unhandled exceptions to aid debugging */
 #include <signal.h>
 
@@ -513,6 +517,10 @@ bool display_output_windows::initialize() {
   create_fonts();
   is_graphical = true;
 
+#ifdef BUILD_IMLIB2
+  cimlib_init();
+#endif
+
   /* Workarea describes the primary monitor's usable area (excluding taskbar).
    * Conky positions text relative to this rect (e.g. "top_right" means the
    * text sits at the right edge of the workarea).  The window is resized and
@@ -536,6 +544,9 @@ bool display_output_windows::initialize() {
 }
 
 bool display_output_windows::shutdown() {
+#ifdef BUILD_IMLIB2
+  cimlib_deinit();
+#endif
   free_fonts(false);
   if (hwnd_ != nullptr) {
     DestroyWindow(hwnd_);
@@ -689,6 +700,15 @@ void display_output_windows::begin_draw_text() {
    * layer, underneath conky's own GDI drawing below. See cairo_dynamic.hh
    * and composite_hook_surface() for why this exists and its limitations. */
   composite_hook_surface();
+
+#ifdef BUILD_IMLIB2
+  /* ${image}: re-composited every frame, same reasoning as
+   * composite_hook_surface() above -- this port recreates the whole DIB
+   * on every begin_draw_text() call, so there's no persistent drawable
+   * to draw onto once like X11's cimlib_render() does. */
+  cimlib_draw_windows(mem_dc_, win_w_, win_h_, window_rect_.left,
+                      window_rect_.top);
+#endif
 
   /* No background fill beyond the hook layer above — the DIB starts (or is
    * left) transparent everywhere the hook layer didn't draw. GDI draws

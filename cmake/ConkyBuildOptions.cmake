@@ -252,9 +252,13 @@ dependent_option(BUILD_XDBE "Build Xdbe (double-buffer) support" true
 dependent_option(BUILD_XFT "Build Xft (freetype fonts) support" true
   "BUILD_X11" false
   "Xft (freetype font) support requires X11")
+# Windows gets a from-scratch GDI+ backend for ${image} instead of Imlib2
+# itself (X11-adjacent, not a good porting target -- see conky-windows
+# issue #24, same shape as the Cairo work in #10), so it isn't tied to
+# BUILD_X11 the way other platforms are.
 dependent_option(BUILD_IMLIB2 "Enable Imlib2 support" true
-  "BUILD_X11" false
-  "Imlib2 support requires X11")
+  "BUILD_X11 OR OS_WINDOWS" false
+  "Imlib2 support requires X11 (or a Windows GDI+ backend)")
 dependent_option(BUILD_XSHAPE "Enable Xshape support" true
   "BUILD_X11" false
   "Xshape support requires X11")

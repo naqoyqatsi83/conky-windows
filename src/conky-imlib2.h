@@ -29,10 +29,14 @@
 
 #include <array>
 
+#ifndef _WIN32
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wvariadic-macros"
 #include <X11/Xlib.h>
 #pragma GCC diagnostic pop
+#else
+#include <windows.h>
+#endif /* _WIN32 */
 
 using saved_coordinates_t = std::array<std::array<int, 2>, 100>;
 extern saved_coordinates_t saved_coordinates;
@@ -49,6 +53,17 @@ void cimlib_cleanup(void);
 void cimlib_init();
 /// Tears down the imlib context and cached images.
 void cimlib_deinit();
+
+#ifdef _WIN32
+/// Windows only: draws every configured ${image} directly onto `hdc` (this
+/// port's per-frame DIB, see display-windows.cc's begin_draw_text()) --
+/// called from there on every frame, the same way composite_hook_surface()
+/// re-composites the Lua draw-hook layer every frame. Coordinates are
+/// window-relative (screen-absolute minus window_left/window_top), matching
+/// this port's established convention (see AGENTS.md).
+void cimlib_draw_windows(HDC hdc, int win_w, int win_h, int window_left,
+                         int window_top);
+#endif /* _WIN32 */
 
 void print_image_callback(struct text_object *, char *, unsigned int);
 
