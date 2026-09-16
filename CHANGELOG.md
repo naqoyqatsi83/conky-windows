@@ -15,6 +15,11 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${wireless_*}` family on Windows (10 objects), via the Native Wifi API
+  (`wlanapi.h`). Verified the adapter-detection and not-connected paths
+  against real Wi-Fi hardware; the actively-connected data path wasn't
+  testable end-to-end on the dev machine (no live Wi-Fi network
+  configured there). [#20](https://github.com/naqoyqatsi83/conky-windows/issues/20)
 - `${mpd_*}` family on Windows (~17 objects) -- fixed a Unix-domain-socket
   code path that unconditionally referenced `struct sockaddr_un` (doesn't
   exist on Windows), then a `SOCK_CLOEXEC` fallback macro that resolved
