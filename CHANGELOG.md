@@ -14,6 +14,12 @@ section in [AGENTS.md](AGENTS.md) for how work flows from issue to
 Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
+### Added
+- `${v6addrs}` on Windows -- was gated off at the CMake level
+  (`BUILD_IPV6` restricted to Linux). Also fixed a dormant heap-corrupting
+  buffer overflow in the adapter address memcpy, exposed for the first
+  time by enabling IPv6 support. [#26](https://github.com/naqoyqatsi83/conky-windows/issues/26)
+
 ### Fixed
 - `conky.exe` could crash entirely once its log file hit the rotation
   threshold -- spdlog's default error handler aborted the process on a
