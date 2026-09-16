@@ -20,6 +20,12 @@ version heading when that state gets tagged and merged to `main`.
   buffer overflow in the adapter address memcpy, exposed for the first
   time by enabling IPv6 support. [#26](https://github.com/naqoyqatsi83/conky-windows/issues/26)
 
+### Changed
+- `tools/backport_conkyrc.py` now flags `${...}` objects that aren't real
+  conky objects at all (typos, or long-deprecated upstream names like
+  `${pre_exec}`) as a distinct `UNKNOWN` category instead of silently
+  passing them as OK. [#8](https://github.com/naqoyqatsi83/conky-windows/issues/8)
+
 ### Fixed
 - `conky.exe` could crash entirely once its log file hit the rotation
   threshold -- spdlog's default error handler aborted the process on a
