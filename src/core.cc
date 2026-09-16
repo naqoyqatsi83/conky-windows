@@ -1111,6 +1111,11 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
 #ifdef _WIN32
       OBJ(addrs, &update_net_stats) parse_net_stat_arg(obj, arg, free_at_crash);
   obj->callbacks.print = &print_addrs;
+#ifdef BUILD_IPV6
+  END OBJ(v6addrs, &update_net_stats)
+      parse_net_stat_arg(obj, arg, free_at_crash);
+  obj->callbacks.print = &print_v6addrs;
+#endif /* BUILD_IPV6 */
   END
 #endif /* _WIN32 */
       OBJ_ARG(tail, nullptr, "tail needs arguments")

@@ -212,7 +212,11 @@ int update_net_stats() {
         }
 #ifdef BUILD_IPV6
         else if (sa->sa_family == AF_INET6) {
-          memcpy(&ns->addr, sa, sizeof(struct sockaddr_in6));
+          /* ns->addr is a plain "struct sockaddr" (16 bytes) -- copying a
+           * full sockaddr_in6 (28 bytes) here overflows it and corrupts
+           * the adjacent v6addrs field. The real IPv6 address data lives
+           * in ns->v6addrs (below); this just records the family. */
+          memcpy(&ns->addr, sa, sizeof(struct sockaddr));
         }
 #endif
       }
@@ -232,6 +236,44 @@ int update_net_stats() {
           strncat(ns->addrs, one, sizeof(ns->addrs) - used - 1);
         }
       }
+
+#ifdef BUILD_IPV6
+      /* ${v6addrs}: same idea as addrs above, but IPv6 -- walk the same
+       * adapter's unicast list for AF_INET6 entries.
+       *
+       * v6addr nodes must be allocated with malloc()/calloc(), not new --
+       * clear_net_stats() in net_stat.cc (shared with all platforms) frees
+       * this list with free_and_zero(), and mixing new[]/delete with
+       * malloc/free on the same allocation corrupts the heap (it compiled
+       * and ran, but crashed later on an unrelated-looking garbage
+       * pointer read once corrupted heap metadata got walked). */
+      while (ns->v6addrs != nullptr) {
+        struct v6addr *next = ns->v6addrs->next;
+        free(ns->v6addrs);
+        ns->v6addrs = next;
+      }
+      struct v6addr *v6_tail = nullptr;
+      for (auto *ua = p->FirstUnicastAddress; ua != nullptr; ua = ua->Next) {
+        SOCKADDR *ua_sa = ua->Address.lpSockaddr;
+        if (ua_sa->sa_family != AF_INET6) { continue; }
+        auto *sin6 = reinterpret_cast<sockaddr_in6 *>(ua_sa);
+
+        auto *node = static_cast<struct v6addr *>(malloc(sizeof(struct v6addr)));
+        node->addr = sin6->sin6_addr;
+        node->netmask = ua->OnLinkPrefixLength;
+        node->scope = IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)   ? 'L'
+                      : IN6_IS_ADDR_SITELOCAL(&sin6->sin6_addr) ? 'S'
+                                                                : 'G';
+        node->next = nullptr;
+
+        if (v6_tail != nullptr) {
+          v6_tail->next = node;
+        } else {
+          ns->v6addrs = node;
+        }
+        v6_tail = node;
+      }
+#endif /* BUILD_IPV6 */
     }
   }
 

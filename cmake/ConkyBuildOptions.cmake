@@ -160,7 +160,7 @@ cmake_dependent_option(BUILD_IBM "Support for IBM/Lenovo notebooks" true
 cmake_dependent_option(BUILD_HDDTEMP "Support for hddtemp" true
   "OS_LINUX" false)
 cmake_dependent_option(BUILD_IPV6 "Enable if you want IPv6 support" true
-  "OS_LINUX" false)
+  "OS_LINUX OR OS_WINDOWS" false)
 
 cmake_dependent_option(BUILD_NVIDIA_NVML "Enable Nvidia variables with NVML" false
   "OS_LINUX OR WIN32" false)
