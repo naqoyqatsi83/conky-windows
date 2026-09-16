@@ -26,10 +26,19 @@
 #include "../../content/text_object.h"
 #include "../../logging.h"
 
+#ifdef _WIN32
+/* apcupsd's NIS protocol is plain TCP -- portable in principle, same
+ * shape as the MPD gap (see conky-windows issue #19). Only the socket
+ * headers/close call are actually Linux-specific here. */
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define close(s) closesocket(s)
+#else
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/time.h>
 #include <unistd.h>
+#endif /* _WIN32 */
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -196,6 +205,19 @@ int update_apcupsd() {
   APCUPSD_S apc;
   int sock = -1;
 
+#ifdef _WIN32
+  /* getaddrinfo()/select() etc. are real Winsock calls, unlike the IP
+   * Helper API used elsewhere in this port -- need the socket subsystem
+   * started once first (same requirement found for tcp_portmon, issue
+   * #13). */
+  static bool wsa_started = false;
+  if (!wsa_started) {
+    WSADATA wsa_data;
+    WSAStartup(MAKEWORD(2, 2), &wsa_data);
+    wsa_started = true;
+  }
+#endif /* _WIN32 */
+
   for (i = 0; i < _APCUPSD_COUNT; ++i) {
     memcpy(apc.items[i], "N/A", 4);  // including \0
   }
@@ -237,7 +259,8 @@ int update_apcupsd() {
     //
     sz = htons(6);
     // no waiting to become writeable is really needed
-    if (send(sock, &sz, sizeof(sz), 0) != sizeof(sz) ||
+    if (send(sock, reinterpret_cast<const char *>(&sz), sizeof(sz), 0) !=
+            sizeof(sz) ||
         send(sock, "status", 6, 0) != 6) {
       LOG_ERROR("send: {}", strerror(errno));
       close(sock);

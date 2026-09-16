@@ -48,7 +48,6 @@ from pathlib import Path
 # see cmake/ConkyBuildOptions.cmake / .github/workflows/build-windows.yml).
 UNSUPPORTED_PREFIXES = (
     "moc_", "cmus_", "xmms2_", "audacious_",  # music players -- mpd_ works (issue #19)
-    "apcupsd_",                                        # UPS monitoring
     "pa_",                                              # PulseAudio
     "irc_", "ical_", "ibm_", "smapi_",
 )
