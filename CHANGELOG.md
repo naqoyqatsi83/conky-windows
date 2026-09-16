@@ -15,6 +15,8 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${apcupsd_*}` family on Windows (~13 objects) -- its NIS protocol is
+  plain BSD sockets, needing only header/close()/WSAStartup fixes. [#25](https://github.com/naqoyqatsi83/conky-windows/issues/25)
 - `${image}` on Windows, via a from-scratch GDI+ backend (Imlib2 itself
   is X11-adjacent and not a good porting target). Verified visually
   with PrintWindow against a generated test PNG. [#24](https://github.com/naqoyqatsi83/conky-windows/issues/24)
