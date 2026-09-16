@@ -2,10 +2,11 @@
 """conky_editor - live-preview GUI config editor for this Windows port.
 
 See issue #31. A QPlainTextEdit for the raw conkyrc text, a positioning
-grid that mirrors conky's own alignment/gap_x/gap_y model, and a managed
-conky.exe subprocess (preview.py) that re-renders against a debounced
-temp-file write on every edit -- the preview is the real renderer, not a
-second implementation of it.
+grid that mirrors conky's own alignment/gap_x/gap_y/xinerama_head model
+(see issue #32 for the xinerama_head/multi-monitor support this drives),
+and a managed conky.exe subprocess (preview.py) that re-renders against a
+debounced temp-file write on every edit -- the preview is the real
+renderer, not a second implementation of it.
 
 Usage:
     python tools/conky_editor/main.py [path/to/theme.conkyrc]
@@ -22,6 +23,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QComboBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -37,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 import config_io
+import monitors
 from preview import PreviewProcess
 
 DEBOUNCE_MS = 400
@@ -131,6 +134,14 @@ class ConkyEditorWindow(QMainWindow):
         group = QGroupBox("Position", self)
         grid = QGridLayout(group)
 
+        grid.addWidget(QLabel("monitor"), 0, 0)
+        self.monitor_combo = QComboBox(group)
+        self.monitor_combo.addItem("Default (primary)", -1)
+        for mon in monitors.list_monitors():
+            self.monitor_combo.addItem(mon.label, mon.index)
+        self.monitor_combo.currentIndexChanged.connect(self._on_monitor_changed)
+        grid.addWidget(self.monitor_combo, 0, 1, 1, 2)
+
         self._alignment_group = QButtonGroup(self)
         self._alignment_buttons: dict[str, QRadioButton] = {}
         for row, cells in enumerate(_GRID_POSITIONS):
@@ -139,19 +150,19 @@ class ConkyEditorWindow(QMainWindow):
                 button.toggled.connect(self._on_alignment_toggled(alignment))
                 self._alignment_group.addButton(button)
                 self._alignment_buttons[alignment] = button
-                grid.addWidget(button, row, col)
+                grid.addWidget(button, row + 1, col)
 
-        grid.addWidget(QLabel("gap_x"), 3, 0)
+        grid.addWidget(QLabel("gap_x"), 4, 0)
         self.gap_x_spin = QSpinBox(group)
         self.gap_x_spin.setRange(-2000, 4000)
         self.gap_x_spin.valueChanged.connect(self._on_gap_changed)
-        grid.addWidget(self.gap_x_spin, 3, 1, 1, 2)
+        grid.addWidget(self.gap_x_spin, 4, 1, 1, 2)
 
-        grid.addWidget(QLabel("gap_y"), 4, 0)
+        grid.addWidget(QLabel("gap_y"), 5, 0)
         self.gap_y_spin = QSpinBox(group)
         self.gap_y_spin.setRange(-2000, 4000)
         self.gap_y_spin.valueChanged.connect(self._on_gap_changed)
-        grid.addWidget(self.gap_y_spin, 4, 1, 1, 2)
+        grid.addWidget(self.gap_y_spin, 5, 1, 1, 2)
 
         return group
 
@@ -229,6 +240,10 @@ class ConkyEditorWindow(QMainWindow):
 
         return handler
 
+    def _on_monitor_changed(self, _index: int) -> None:
+        head = self.monitor_combo.currentData()
+        self._rewrite_text(lambda t: config_io.write_xinerama_head(t, head))
+
     def _on_gap_changed(self, _value: int) -> None:
         self._rewrite_text(
             lambda t: config_io.write_gap_y(
@@ -256,11 +271,19 @@ class ConkyEditorWindow(QMainWindow):
         alignment = config_io.read_alignment(text)
         gap_x = config_io.read_gap_x(text)
         gap_y = config_io.read_gap_y(text)
+        head = config_io.read_xinerama_head(text)
+        if head is None:
+            head = -1
 
         for name, button in self._alignment_buttons.items():
             button.blockSignals(True)
             button.setChecked(name == alignment)
             button.blockSignals(False)
+
+        self.monitor_combo.blockSignals(True)
+        combo_index = self.monitor_combo.findData(head)
+        self.monitor_combo.setCurrentIndex(combo_index if combo_index >= 0 else 0)
+        self.monitor_combo.blockSignals(False)
 
         self.gap_x_spin.blockSignals(True)
         self.gap_x_spin.setValue(gap_x if gap_x is not None else 0)

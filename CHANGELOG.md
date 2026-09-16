@@ -31,6 +31,13 @@ version heading when that state gets tagged and merged to `main`.
   2-monitor setup: `xinerama_head = 1` lands the window on the secondary
   monitor, `0`/unset/out-of-range all correctly resolve to
   primary. [#32](https://github.com/naqoyqatsi83/conky-windows/issues/32)
+- `tools/conky_editor/`: a monitor picker (`monitors.py` + a combo box)
+  wired to `xinerama_head`, driving the same preview loop as the alignment
+  grid. Verified end-to-end on this machine's real 2-monitor setup:
+  selecting the secondary monitor moves the live preview window there
+  (`GetWindowRect` confirmed), and switching back to "Default" removes the
+  `xinerama_head` key rather than leaving a redundant explicit
+  `-1`. [#32](https://github.com/naqoyqatsi83/conky-windows/issues/32)
 
 ## [1.24.3-wp.4] - 2026-09-16
 

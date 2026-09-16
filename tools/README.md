@@ -29,9 +29,10 @@ No dependencies beyond the Python 3 standard library.
 ## conky_editor/
 
 Live-preview GUI config editor: a text pane for the raw conkyrc next to a
-real, live-updating `conky.exe` preview, plus a 3x3 anchor grid + gap_x/gap_y
-fields that mirror conky's own positioning model. See issue #31 for
-scope/rationale.
+real, live-updating `conky.exe` preview, plus a 3x3 anchor grid, gap_x/gap_y
+fields, and a monitor picker that together mirror conky's own positioning
+model. See issue #31 for scope/rationale, #32 for the xinerama_head/
+multi-monitor support the picker drives.
 
 ```powershell
 python tools\conky_editor\main.py [path\to\theme.conkyrc]
@@ -45,7 +46,13 @@ config-reload signal on this Windows port to reload in place instead (see
 `preview.py`'s docstring).
 
 `config_io.py` does targeted regex substitution of `alignment`/`gap_x`/
-`gap_y` in `conky.config = { ... }` -- like `backport_conkyrc.py`, not a full
-Lua parser, and it only rewrites keys that already exist in the file.
+`gap_y`/`xinerama_head` in `conky.config = { ... }` -- like
+`backport_conkyrc.py`, not a full Lua parser. `xinerama_head` is the one
+exception to "only rewrites keys that already exist": most themes won't
+have it, so the monitor picker inserts it when a non-default monitor is
+picked and removes it again on "Default (primary)" rather than writing a
+redundant `-1`. `monitors.py` enumerates monitors via `EnumDisplayMonitors`
+in the same order `xinerama_head` indexes into
+(`src/output/display-windows.cc`'s `resolve_target_monitor()`).
 
 Requires PySide6 (`pip install PySide6`).

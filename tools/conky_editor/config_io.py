@@ -18,9 +18,11 @@ ALIGNMENTS = (
 )
 
 _CONFIG_BLOCK_RE = re.compile(r"conky\.config\s*=\s*\{.*?\n\}", re.DOTALL)
+_CONFIG_OPEN_RE = re.compile(r"conky\.config\s*=\s*\{")
 _ALIGNMENT_RE = re.compile(r"""alignment\s*=\s*['"](\w+)['"]""")
 _GAP_X_RE = re.compile(r"\bgap_x\s*=\s*(-?\d+)")
 _GAP_Y_RE = re.compile(r"\bgap_y\s*=\s*(-?\d+)")
+_XINERAMA_HEAD_RE = re.compile(r"\bxinerama_head\s*=\s*(-?\d+)")
 
 
 def _config_block(text: str) -> str:
@@ -66,3 +68,36 @@ def write_gap_x(text: str, gap_x: int) -> str:
 
 def write_gap_y(text: str, gap_y: int) -> str:
     return _replace_in_block(text, _GAP_Y_RE, f"gap_y = {gap_y}")
+
+
+def read_xinerama_head(text: str) -> int | None:
+    """None means the key is absent -- treat that the same as -1 (primary)."""
+    match = _XINERAMA_HEAD_RE.search(_config_block(text))
+    return int(match.group(1)) if match else None
+
+
+def write_xinerama_head(text: str, head: int) -> str:
+    """Unlike the other write_* helpers, inserts the key if it's missing --
+    most real-world conkyrc files won't already have xinerama_head, and the
+    editor's monitor picker needs to add it, not just edit an existing one.
+    Setting head to -1 (primary/default) removes the key entirely instead,
+    keeping the common case free of a redundant explicit key.
+    """
+    block = _config_block(text)
+    has_key = _XINERAMA_HEAD_RE.search(block) is not None
+
+    if head < 0:
+        if not has_key:
+            return text
+        start, end = _CONFIG_BLOCK_RE.search(text).span()
+        new_block = re.sub(r"[ \t]*\bxinerama_head\s*=\s*-?\d+,?\n?", "", block, count=1)
+        return text[:start] + new_block + text[end:]
+
+    if has_key:
+        return _replace_in_block(text, _XINERAMA_HEAD_RE, f"xinerama_head = {head}")
+
+    open_match = _CONFIG_OPEN_RE.search(text)
+    if open_match is None:
+        return text
+    insert_at = open_match.end()
+    return text[:insert_at] + f"\n  xinerama_head = {head}," + text[insert_at:]
