@@ -28,12 +28,214 @@
  */
 
 #include <time.h>
-#include <unistd.h>
-#include <utmp.h>
 #include "../conky.h"
 #include "../logging.h"
 
 #define BUFLEN 512
+
+#ifdef _WIN32
+/* Windows equivalent of utmp: WTSEnumerateSessions()/
+ * WTSQuerySessionInformation() (Terminal Services API) enumerate logged-in
+ * sessions on this machine (RDP as well as the local console) -- a
+ * multi-user-terminal concept with low real value on a typical
+ * single-user Windows desktop, but genuinely implementable. See
+ * conky-windows issue #23.
+ *
+ * Mirrors the *aggregate* behavior of the Linux code below exactly,
+ * including its quirks: user_name()/user_term() overwrite the output
+ * buffer on every matching entry (so callers only ever see the *last*
+ * session found, not a list), while user_time() concatenates one
+ * formatted duration per session. Not "fixed" here since that's
+ * pre-existing upstream behavior, not a Windows-specific bug. */
+#include <windows.h>
+#include <wtsapi32.h>
+
+namespace {
+/* FILETIME (100ns ticks since 1601-01-01) -> Unix time_t. */
+time_t filetime_to_unix(const LARGE_INTEGER &ft) {
+  constexpr int64_t kEpochDiff = 11644473600LL;  // seconds, 1601 -> 1970
+  return static_cast<time_t>(ft.QuadPart / 10000000LL - kEpochDiff);
+}
+
+/* Calls `fn` for each active WTS session's (username, station name,
+ * logon time). Returns the number of sessions visited. */
+template <typename Fn>
+int for_each_wts_session(Fn fn) {
+  PWTS_SESSION_INFOA sessions = nullptr;
+  DWORD count = 0;
+  if (!WTSEnumerateSessionsA(WTS_CURRENT_SERVER_HANDLE, 0, 1, &sessions,
+                             &count)) {
+    return 0;
+  }
+
+  int visited = 0;
+  for (DWORD i = 0; i < count; ++i) {
+    const WTS_SESSION_INFOA &session = sessions[i];
+    if (session.State != WTSActive) { continue; }
+
+    LPSTR username = nullptr;
+    DWORD username_bytes = 0;
+    if (!WTSQuerySessionInformationA(WTS_CURRENT_SERVER_HANDLE,
+                                     session.SessionId, WTSUserName,
+                                     &username, &username_bytes) ||
+        username == nullptr || username[0] == '\0') {
+      if (username != nullptr) { WTSFreeMemory(username); }
+      continue;
+    }
+
+    LPSTR info_buf = nullptr;
+    DWORD info_bytes = 0;
+    time_t logon_time = 0;
+    if (WTSQuerySessionInformationA(WTS_CURRENT_SERVER_HANDLE,
+                                    session.SessionId, WTSSessionInfo,
+                                    &info_buf, &info_bytes) &&
+        info_buf != nullptr) {
+      const auto *wts_info = reinterpret_cast<const WTSINFOA *>(info_buf);
+      logon_time = filetime_to_unix(wts_info->LogonTime);
+      WTSFreeMemory(info_buf);
+    }
+
+    fn(username, session.pWinStationName != nullptr ? session.pWinStationName
+                                                     : "",
+       logon_time);
+    WTSFreeMemory(username);
+    ++visited;
+  }
+
+  WTSFreeMemory(sessions);
+  return visited;
+}
+}  // namespace
+
+static void users_alloc(struct information *ptr) {
+  if (ptr->users.names == nullptr) {
+    ptr->users.names = (char *)malloc(text_buffer_size.get(*state));
+  }
+  if (ptr->users.terms == nullptr) {
+    ptr->users.terms = (char *)malloc(text_buffer_size.get(*state));
+  }
+  if (ptr->users.times == nullptr) {
+    ptr->users.times = (char *)malloc(text_buffer_size.get(*state));
+  }
+}
+
+int update_users(void) {
+  struct information *current_info = &info;
+  users_alloc(current_info);
+
+  current_info->users.names[0] = '\0';
+  current_info->users.terms[0] = '\0';
+  current_info->users.times[0] = '\0';
+  current_info->users.number = 0;
+
+  time_t now = time(nullptr);
+  current_info->users.number = for_each_wts_session(
+      [&](const char *username, const char *station, time_t logon_time) {
+        snprintf(current_info->users.names, text_buffer_size.get(*state),
+                 "%s", username);
+        snprintf(current_info->users.terms, text_buffer_size.get(*state),
+                 "%s", station);
+
+        char buf[BUFLEN] = "";
+        if (logon_time > 0 && logon_time <= now) {
+          format_seconds(buf, BUFLEN, static_cast<long>(now - logon_time));
+        }
+        size_t used = strlen(current_info->users.times);
+        if (buf[0] != '\0' &&
+            used + strlen(buf) + 1 < text_buffer_size.get(*state)) {
+          strncat(current_info->users.times, buf,
+                  text_buffer_size.get(*state) - used - 1);
+        }
+      });
+
+  if (current_info->users.names[0] == '\0') {
+    snprintf(current_info->users.names, text_buffer_size.get(*state), "%s",
+            "broken");
+  }
+  if (current_info->users.terms[0] == '\0') {
+    snprintf(current_info->users.terms, text_buffer_size.get(*state), "%s",
+            "broken");
+  }
+  if (current_info->users.times[0] == '\0') {
+    snprintf(current_info->users.times, text_buffer_size.get(*state), "%s",
+            "broken");
+  }
+
+  return 0;
+}
+
+void print_user_names(struct text_object *obj, char *p,
+                      unsigned int p_max_size) {
+  (void)obj;
+  snprintf(p, p_max_size, "%s", info.users.names);
+}
+
+void print_user_terms(struct text_object *obj, char *p,
+                      unsigned int p_max_size) {
+  (void)obj;
+  snprintf(p, p_max_size, "%s", info.users.terms);
+}
+
+void print_user_times(struct text_object *obj, char *p,
+                      unsigned int p_max_size) {
+  (void)obj;
+  snprintf(p, p_max_size, "%s", info.users.times);
+}
+
+void print_user_time(struct text_object *obj, char *p,
+                     unsigned int p_max_size) {
+  /* obj->data.s names a console/tty by Linux ut_line convention (e.g.
+   * "tty1", "pts/0") -- Windows station names ("Console", "RDP-Tcp#0")
+   * don't correspond, so this looks up by *username* instead, which is
+   * the practically useful equivalent on a Windows desktop. */
+  time_t now = time(nullptr);
+  char buf[BUFLEN] = "";
+  for_each_wts_session(
+      [&](const char *username, const char * /*station*/, time_t logon_time) {
+        if (obj->data.s != nullptr && strcasecmp(username, obj->data.s) == 0 &&
+            logon_time > 0 && logon_time <= now) {
+          format_seconds(buf, BUFLEN, static_cast<long>(now - logon_time));
+        }
+      });
+
+  if (info.users.ctime == nullptr) {
+    info.users.ctime = (char *)malloc(text_buffer_size.get(*state));
+  }
+  snprintf(info.users.ctime, text_buffer_size.get(*state), "%s",
+          buf[0] != '\0' ? buf : "broken");
+  snprintf(p, p_max_size, "%s", info.users.ctime);
+}
+
+void print_user_number(struct text_object *obj, char *p,
+                       unsigned int p_max_size) {
+  (void)obj;
+  snprintf(p, p_max_size, "%d", info.users.number);
+}
+
+void free_user_names(struct text_object *obj) {
+  (void)obj;
+  free_and_zero(info.users.names);
+}
+
+void free_user_terms(struct text_object *obj) {
+  (void)obj;
+  free_and_zero(info.users.terms);
+}
+
+void free_user_times(struct text_object *obj) {
+  (void)obj;
+  free_and_zero(info.users.times);
+}
+
+void free_user_time(struct text_object *obj) {
+  free_and_zero(info.users.ctime);
+  free_and_zero(obj->data.s);
+}
+
+#else /* !_WIN32 */
+
+#include <unistd.h>
+#include <utmp.h>
 
 static void user_name(char *ptr) {
   const struct utmp *usr = 0;
@@ -248,3 +450,5 @@ void free_user_time(struct text_object *obj) {
   free_and_zero(info.users.ctime);
   free_and_zero(obj->data.s);
 }
+
+#endif /* !_WIN32 */

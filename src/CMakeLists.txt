@@ -268,13 +268,15 @@ if(OS_WINDOWS)
     data/os/windows.h
     data/os/windows/gpu.cc
     data/os/windows/gpu.h
+    data/users.cc
+    data/users.h
     output/display-windows.cc
     output/display-windows.hh
     output/cairo_dynamic.cc
     output/cairo_dynamic.hh
   )
   set(optional_sources ${optional_sources} ${windows_sources})
-  list(APPEND conky_libs ws2_32 iphlpapi pdh ole32 wbemuuid)
+  list(APPEND conky_libs ws2_32 iphlpapi pdh ole32 wbemuuid wtsapi32)
   if(BUILD_WLAN)
     list(APPEND conky_libs wlanapi)
   endif()

@@ -61,7 +61,6 @@ UNSUPPORTED_EXACT = {
                         # per-thread status isn't exposed by the Toolhelp32 API this port uses
     "image",  # BUILD_IMLIB2 is off; would need a from-scratch GDI+ backend, not a port (issue #24)
     "desktop", "desktop_number", "desktop_name",  # no stable pre-Win11 API (issue #22)
-    "user_names", "user_times", "user_number", "user_terms",  # low value, not implemented (issue #23)
 }
 
 # Per-object overrides for UNSUPPORTED_EXACT's generic "Linux-only
@@ -114,6 +113,11 @@ REVIEW_OBJECTS = {
     "if_mixer_mute": "See ${mixer} note above -- checks the default "
                      "playback device's mute state, ignoring any "
                      "channel-name argument.",
+    "user_time": "Works (issue #23), but its argument means something "
+                 "different on Windows: a username (e.g. 'peto'), not a "
+                 "Linux tty/console name (e.g. 'tty1') -- Windows "
+                 "session station names ('Console', 'RDP-Tcp#0') don't "
+                 "correspond to Linux's ut_line convention.",
     "wireless_mode": "Windows' Native Wifi API (wlanapi.h) doesn't expose "
                      "an ad-hoc-vs-infrastructure distinction the way "
                      "Linux's iw_operation_mode does -- always reports "

@@ -1617,6 +1617,17 @@ struct text_object *construct_text_object(char *s, const char *arg, long line,
    * isn't implemented on Windows yet -- see
    * update_gateway_info2()/print_gateway_iface2() in
    * src/data/os/windows.cc. */
+  END OBJ(user_names, &update_users) obj->callbacks.print = &print_user_names;
+  obj->callbacks.free = &free_user_names;
+  END OBJ(user_times, &update_users) obj->callbacks.print = &print_user_times;
+  obj->callbacks.free = &free_user_times;
+  END OBJ_ARG(user_time, 0, "user time needs a console name as argument")
+      obj->data.s = STRNDUP_ARG;
+  obj->callbacks.print = &print_user_time;
+  obj->callbacks.free = &free_user_time;
+  END OBJ(user_terms, &update_users) obj->callbacks.print = &print_user_terms;
+  obj->callbacks.free = &free_user_terms;
+  END OBJ(user_number, &update_users) obj->callbacks.print = &print_user_number;
 #endif /* _WIN32 */
 #if (defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || \
      defined(__DragonFly__) || defined(__OpenBSD__)) &&     \
