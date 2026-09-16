@@ -15,6 +15,11 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${mpd_*}` family on Windows (~17 objects) -- fixed a Unix-domain-socket
+  code path that unconditionally referenced `struct sockaddr_un` (doesn't
+  exist on Windows), then a `SOCK_CLOEXEC` fallback macro that resolved
+  to an unrelated nonzero value and produced an invalid socket type
+  bitmask at runtime. [#19](https://github.com/naqoyqatsi83/conky-windows/issues/19)
 - `${curl}`, `${github_notifications}`, and `${stock}` on Windows, via a
   newly-vendored curl build (`3rdparty/curl`). `${stock}`'s own hardcoded
   API endpoint turned out to be dead since ~2017, independent of this
