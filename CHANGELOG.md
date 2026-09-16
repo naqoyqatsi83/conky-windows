@@ -15,6 +15,9 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${tcp_portmon}` on Windows, via a new `GetExtendedTcpTable()`-based
+  connection gatherer (IPv4 and IPv6) reusing the existing portable
+  connection-tracking core in `libtcp-portmon.cc`. [#13](https://github.com/naqoyqatsi83/conky-windows/issues/13)
 - `${v6addrs}` on Windows -- was gated off at the CMake level
   (`BUILD_IPV6` restricted to Linux). Also fixed a dormant heap-corrupting
   buffer overflow in the adapter address memcpy, exposed for the first
