@@ -15,6 +15,9 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${image}` on Windows, via a from-scratch GDI+ backend (Imlib2 itself
+  is X11-adjacent and not a good porting target). Verified visually
+  with PrintWindow against a generated test PNG. [#24](https://github.com/naqoyqatsi83/conky-windows/issues/24)
 - `${user_names}`/`${user_times}`/`${user_time}`/`${user_terms}`/
   `${user_number}` on Windows, via the Terminal Services API
   (`WTSEnumerateSessions`). [#23](https://github.com/naqoyqatsi83/conky-windows/issues/23)
