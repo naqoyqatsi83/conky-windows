@@ -15,6 +15,8 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${rss}` on Windows, via a newly-vendored libxml2 build (`3rdparty/libxml2`,
+  actively-maintained MSYS2 package) alongside its curl dependency. [#30](https://github.com/naqoyqatsi83/conky-windows/issues/30)
 - `${mixer}`/`${mixerbar}`/`${mixerl}`/`${mixerr}`/`${if_mixer_mute}` on
   Windows, via Core Audio (`IAudioEndpointVolume`). No discrete named
   mixer channels like OSS, so a channel-name argument is ignored in
