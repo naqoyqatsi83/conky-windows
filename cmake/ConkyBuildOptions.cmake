@@ -309,7 +309,15 @@ option(BUILD_MOC "Enable if you want MOC (music player) support" true)
 
 option(BUILD_XMMS2 "Enable if you want XMMS2 (music player) support" false)
 
-option(BUILD_CURL "Enable if you want Curl support" false)
+# Windows gets curl vendored (3rdparty/curl, see conky-windows issue #18)
+# so it can default on; other platforms keep the historical opt-in
+# default (curl is a real, discoverable system dependency there via
+# pkg-config/find_package(CURL), just not assumed present).
+if(OS_WINDOWS)
+  option(BUILD_CURL "Enable if you want Curl support" true)
+else()
+  option(BUILD_CURL "Enable if you want Curl support" false)
+endif()
 
 dependent_option(BUILD_RSS "Enable if you want RSS support" false
   "BUILD_CURL" false

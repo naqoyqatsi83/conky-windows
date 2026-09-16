@@ -61,13 +61,22 @@ UNSUPPORTED_EXACT = {
     "running_threads",  # threads is supported (see REVIEW below), but "running" (ready-state)
                         # per-thread status isn't exposed by the Toolhelp32 API this port uses
     "image",  # BUILD_IMLIB2 is off; would need a from-scratch GDI+ backend, not a port (issue #24)
-    "curl", "github_notifications", "stock", "rss",  # BUILD_CURL off (issue #18) -- not incompatible,
-                                                      # just not vendored/linked for this toolchain yet
+    "rss",  # needs libxml2 in addition to curl; curl itself is vendored and on by
+            # default now (issue #18), but rss's own dependency isn't vendored yet
     "mixer", "mixerbar", "mixerl", "mixerr", "if_mixer_mute",  # needs Core Audio (issue #21)
     "desktop", "desktop_number", "desktop_name",  # no stable pre-Win11 API (issue #22)
     "user_names", "user_times", "user_number", "user_terms",  # low value, not implemented (issue #23)
-    "v6addrs",  # addrs works (issue #15); v6addrs additionally needs BUILD_IPV6, gated to
-                # OS_LINUX at the CMake level (issue #26)
+}
+
+# Per-object overrides for UNSUPPORTED_EXACT's generic "Linux-only
+# subsystem" message, for the handful of cases where that phrasing isn't
+# accurate (e.g. rss: not Linux-only, just missing a second vendored
+# dependency on top of curl).
+UNSUPPORTED_MESSAGES = {
+    "rss": "${rss} needs libxml2 in addition to curl (which is now vendored "
+           "and on by default, issue #18) -- libxml2 itself isn't vendored "
+           "for this toolchain yet. Not a Linux-only subsystem, just an "
+           "unfinished dependency.",
 }
 
 # Objects that work on Windows but have a platform-specific gotcha worth
@@ -100,6 +109,11 @@ REVIEW_OBJECTS = {
     "battery_bar": "See ${battery} note above.",
     "battery_percent": "See ${battery} note above.",
     "battery_time": "See ${battery} note above.",
+    "stock": "Works (curl is vendored, issue #18), but the hardcoded endpoint "
+             "(download.finance.yahoo.com's old CSV quotes API) has been dead "
+             "since ~2017 -- confirmed via a direct request (connection "
+             "times out, no response). Not a Windows-specific issue; a "
+             "current Linux conky build hits the exact same dead endpoint.",
 }
 
 # ---------------------------------------------------------------------------
@@ -531,6 +545,8 @@ def classify(name: str, args: str) -> tuple[str, str] | None:
             f"build would show the same unparsed text (see issue #8).",
         )
     if name in UNSUPPORTED_EXACT or any(name.startswith(p) for p in UNSUPPORTED_PREFIXES):
+        if name in UNSUPPORTED_MESSAGES:
+            return "UNSUPPORTED", UNSUPPORTED_MESSAGES[name]
         return "UNSUPPORTED", f"${{{name}}} has no Windows equivalent (Linux-only subsystem)."
     if name in REVIEW_OBJECTS:
         return "REVIEW", REVIEW_OBJECTS[name]

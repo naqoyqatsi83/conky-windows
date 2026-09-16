@@ -900,7 +900,21 @@ if(BUILD_PULSEAUDIO)
   set(conky_includes ${conky_includes} ${PULSEAUDIO_INCLUDE_DIRS})
 endif(BUILD_PULSEAUDIO)
 
-if(WANT_CURL)
+if(WANT_CURL AND OS_WINDOWS)
+  # No pkg-config on this MinGW toolchain -- curl is vendored instead (see
+  # 3rdparty/curl, conky-windows issue #18). Unlike Cairo (3rdparty/cairo,
+  # resolved dynamically at runtime to avoid a hard PE import), curl is a
+  # normal hard link dependency here: ${curl}/${rss}/${stock}/
+  # ${github_notifications} are all compile-time opt-ins already gated
+  # behind BUILD_CURL/BUILD_RSS, so there's no "keep starting without it"
+  # requirement the way Cairo needed for always-compiled-in Lua draw hook
+  # support. Referenced by raw path rather than the curl_windows target
+  # from 3rdparty/curl/CMakeLists.txt because that subdirectory hasn't
+  # been processed yet at this point in the configure (same reason the
+  # Cairo branch above uses raw paths too).
+  set(conky_includes ${conky_includes} "${CMAKE_SOURCE_DIR}/3rdparty/curl/include")
+  set(conky_libs ${conky_libs} "${CMAKE_SOURCE_DIR}/3rdparty/curl/lib/libcurl.dll.a")
+elseif(WANT_CURL)
   pkg_check_modules(CURL libcurl)
   if(CURL_FOUND)
     set(conky_libs ${conky_libs} ${CURL_LINK_LIBRARIES})
@@ -974,7 +988,7 @@ if(WANT_CURL)
     set(conky_libs ${conky_libs} ${CURL_LIBRARIES})
     conky_append_include_dirs(conky_includes ${CURL_INCLUDE_DIRS})
   endif()
-endif(WANT_CURL)
+endif()
 
 # Common libraries
 if(WANT_GLIB)
