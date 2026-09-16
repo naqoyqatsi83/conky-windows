@@ -15,6 +15,9 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${user_names}`/`${user_times}`/`${user_time}`/`${user_terms}`/
+  `${user_number}` on Windows, via the Terminal Services API
+  (`WTSEnumerateSessions`). [#23](https://github.com/naqoyqatsi83/conky-windows/issues/23)
 - `${rss}` on Windows, via a newly-vendored libxml2 build (`3rdparty/libxml2`,
   actively-maintained MSYS2 package) alongside its curl dependency. [#30](https://github.com/naqoyqatsi83/conky-windows/issues/30)
 - `${mixer}`/`${mixerbar}`/`${mixerl}`/`${mixerr}`/`${if_mixer_mute}` on
