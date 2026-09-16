@@ -185,9 +185,13 @@ cmake_dependent_option(
 option(ENABLE_RUNTIME_TWEAKS "Enable runtime environment checks for better system integration" true)
 
 # Optional features etc
-option(BUILD_WLAN "Enable wireless support" false)
+# Windows gets a real implementation via the Native Wifi API (wlanapi.h,
+# src/data/os/windows.cc) so it can default on; other platforms keep the
+# historical opt-in default (see conky-windows issue #20).
 if(OS_WINDOWS)
-  set(BUILD_WLAN false CACHE BOOL "Enable wireless support" FORCE)
+  option(BUILD_WLAN "Enable wireless support" true)
+else()
+  option(BUILD_WLAN "Enable wireless support" false)
 endif()
 
 option(BUILD_BUILTIN_CONFIG "Enable builtin default configuration" true)

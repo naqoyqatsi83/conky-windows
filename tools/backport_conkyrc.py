@@ -50,7 +50,6 @@ UNSUPPORTED_PREFIXES = (
     "moc_", "cmus_", "xmms2_", "audacious_",  # music players -- mpd_ works (issue #19)
     "apcupsd_",                                        # UPS monitoring
     "pa_",                                              # PulseAudio
-    "wireless_",                                        # Linux wireless-tools
     "irc_", "ical_", "ibm_", "smapi_",
 )
 UNSUPPORTED_EXACT = {
@@ -109,6 +108,11 @@ REVIEW_OBJECTS = {
     "battery_bar": "See ${battery} note above.",
     "battery_percent": "See ${battery} note above.",
     "battery_time": "See ${battery} note above.",
+    "wireless_mode": "Windows' Native Wifi API (wlanapi.h) doesn't expose "
+                     "an ad-hoc-vs-infrastructure distinction the way "
+                     "Linux's iw_operation_mode does -- always reports "
+                     "'Managed' (issue #20). Correct for virtually all "
+                     "real-world Wi-Fi, since ad-hoc networks are rare.",
     "stock": "Works (curl is vendored, issue #18), but the hardcoded endpoint "
              "(download.finance.yahoo.com's old CSV quotes API) has been dead "
              "since ~2017 -- confirmed via a direct request (connection "
