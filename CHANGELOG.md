@@ -15,6 +15,11 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Added
+- `${curl}`, `${github_notifications}`, and `${stock}` on Windows, via a
+  newly-vendored curl build (`3rdparty/curl`). `${stock}`'s own hardcoded
+  API endpoint turned out to be dead since ~2017, independent of this
+  port; `${rss}` needs libxml2 too and is tracked separately in
+  [#30](https://github.com/naqoyqatsi83/conky-windows/issues/30). [#18](https://github.com/naqoyqatsi83/conky-windows/issues/18)
 - `${tcp_portmon}` on Windows, via a new `GetExtendedTcpTable()`-based
   connection gatherer (IPv4 and IPv6) reusing the existing portable
   connection-tracking core in `libtcp-portmon.cc`. [#13](https://github.com/naqoyqatsi83/conky-windows/issues/13)
