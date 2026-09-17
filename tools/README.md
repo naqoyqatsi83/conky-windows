@@ -55,4 +55,17 @@ redundant `-1`. `monitors.py` enumerates monitors via `EnumDisplayMonitors`
 in the same order `xinerama_head` indexes into
 (`src/output/display-windows.cc`'s `resolve_target_monitor()`).
 
+`highlighter.py` is a minimal `QSyntaxHighlighter`: `${...}` object
+references are highlighted distinctly, reusing `backport_conkyrc.py`'s own
+`scan_objects()` tokenizer so it's brace-depth aware (correctly skips over
+`${...}`-looking text inside `${exec ...}` shell bodies, e.g. bash's
+`${HOME}`) instead of a naive regex. Deliberately narrow scope per issue
+#31's own plan -- no full Lua highlighting.
+
+The "Lint" panel runs `backport_conkyrc.lint()` on the full editor text on
+the same debounce cycle as the preview restart, listing every non-OK
+finding (REVIEW / UNSUPPORTED / UNKNOWN / CONFIG / EXEC) with its line,
+token, and message -- the same output the CLI tool would give you, just
+live as you type instead of a one-shot report.
+
 Requires PySide6 (`pip install PySide6`).

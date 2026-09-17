@@ -20,6 +20,7 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -29,6 +30,8 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
@@ -38,9 +41,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# tools/backport_conkyrc.py is a sibling of this tools/conky_editor/ package,
+# not on sys.path by default when running main.py as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import backport_conkyrc
 import config_io
 import monitors
+from highlighter import ConkyHighlighter
 from preview import PreviewProcess
+
+_LINT_COLORS = {
+    "ERROR": "#F14C4C",
+    "UNSUPPORTED": "#F14C4C",
+    "UNKNOWN": "#D19A66",
+    "EXEC (manual)": "#D19A66",
+    "REVIEW": "#DCDCAA",
+    "CONFIG": "#DCDCAA",
+    "EXEC (auto)": "#9CDCFE",
+}
 
 DEBOUNCE_MS = 400
 
@@ -85,15 +104,17 @@ class ConkyEditorWindow(QMainWindow):
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(DEBOUNCE_MS)
-        self._debounce.timeout.connect(self._apply_to_preview)
+        self._debounce.timeout.connect(self._on_debounce)
 
         self._build_ui()
+        self._highlighter = ConkyHighlighter(self.editor.document())
 
         if initial_path is not None:
             self._load_file(initial_path)
         else:
             self._set_editor_text(DEFAULT_TEMPLATE)
             self._sync_controls_from_text()
+            self._update_lint()
 
     # -- UI construction ----------------------------------------------
 
@@ -128,7 +149,17 @@ class ConkyEditorWindow(QMainWindow):
         self.status_label.setWordWrap(True)
         side.addWidget(self.status_label)
 
-        side.addStretch(1)
+        side.addWidget(self._build_lint_group(), stretch=1)
+
+    def _build_lint_group(self) -> QGroupBox:
+        group = QGroupBox("Lint (backport_conkyrc.py)", self)
+        layout = QVBoxLayout(group)
+        self.lint_summary_label = QLabel("", self)
+        self.lint_summary_label.setWordWrap(True)
+        layout.addWidget(self.lint_summary_label)
+        self.lint_list = QListWidget(group)
+        layout.addWidget(self.lint_list)
+        return group
 
     def _build_position_group(self) -> QGroupBox:
         group = QGroupBox("Position", self)
@@ -173,6 +204,7 @@ class ConkyEditorWindow(QMainWindow):
         self._current_path = path
         self._set_editor_text(text)
         self._sync_controls_from_text()
+        self._update_lint()
         self.setWindowTitle(f"Conky Editor - {path.name}")
 
     def _set_editor_text(self, text: str) -> None:
@@ -226,6 +258,24 @@ class ConkyEditorWindow(QMainWindow):
             return
         self._write_temp_file()
         self._preview.restart(self._temp_path)
+
+    def _on_debounce(self) -> None:
+        self._update_lint()
+        self._apply_to_preview()
+
+    def _update_lint(self) -> None:
+        report, _rewritten = backport_conkyrc.lint(self.editor.toPlainText())
+        self.lint_list.clear()
+        for finding in report.findings:
+            item = QListWidgetItem(
+                f"L{finding.line}  {finding.token}\n{finding.category}: {finding.message}"
+            )
+            color = _LINT_COLORS.get(finding.category, "#CCCCCC")
+            item.setForeground(QColor(color))
+            self.lint_list.addItem(item)
+        self.lint_summary_label.setText(
+            f"{report.ok_count} OK, {len(report.findings)} finding(s)"
+        )
 
     # -- editor / control wiring -----------------------------------------
 

@@ -38,6 +38,16 @@ version heading when that state gets tagged and merged to `main`.
   (`GetWindowRect` confirmed), and switching back to "Default" removes the
   `xinerama_head` key rather than leaving a redundant explicit
   `-1`. [#32](https://github.com/naqoyqatsi83/conky-windows/issues/32)
+- `tools/conky_editor/`: milestone 3 -- minimal syntax highlighting
+  (`highlighter.py`, `${...}` object references only, reusing
+  `backport_conkyrc.py`'s brace-depth-aware `scan_objects()`) and a live
+  "Lint" side panel running `backport_conkyrc.lint()` on the same debounce
+  cycle as the preview, surfacing every REVIEW/UNSUPPORTED/UNKNOWN/CONFIG/
+  EXEC finding as you type. Verified against the repo's own example theme
+  (57 OK / 11 findings, matching the CLI tool's own output) and that
+  introducing a bogus object gets flagged UNKNOWN within one debounce
+  cycle, with no regression to the preview-restart
+  path. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
 
 ## [1.24.3-wp.4] - 2026-09-16
 
