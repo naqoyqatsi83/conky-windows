@@ -50,11 +50,21 @@ If `conky.exe` is locked (permission denied), kill old processes first:
 
 ### Building individual changes
 
-After editing `display-windows.cc`, rebuild just the relevant object and relink:
+After editing `display-windows.cc`, rebuild just the relevant object and relink
+(note the target is `conky_core.dir`, not `conky.dir` -- run `mingw32-make.exe
+help` if a target 404s, the CMake target layout has drifted from this doc
+before):
 ```powershell
-mingw32-make.exe -j$(nproc) src/CMakeFiles/conky.dir/output/display-windows.cc.obj
-mingw32-make.exe -j$(nproc) conky.exe
+mingw32-make.exe -j$(nproc) src/CMakeFiles/conky_core.dir/output/display-windows.cc.obj
+mingw32-make.exe -j$(nproc) conky
 ```
+
+**Run `cmake`/`mingw32-make` from a shell with `sh` on PATH (Git Bash, not
+plain PowerShell)** -- `src/CMakeLists.txt` generates `colour-names.hh` via
+a configure-time `sh bin/format-colors.sh | gperf` pipeline. If `sh` isn't
+found, that fails silently and `colour-names.hh` goes empty, breaking the
+build with a confusing, seemingly-unrelated `content/colours.cc:81: 'rgb'
+does not name a type` error. Fix: reconfigure from Git Bash.
 
 ## Windows Display Architecture
 

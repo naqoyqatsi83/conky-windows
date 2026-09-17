@@ -59,6 +59,24 @@ version heading when that state gets tagged and merged to `main`.
   controls all render correctly) and its frozen `sys.executable` resolution
   was confirmed correct via a throwaway probe
   build. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+- `installer/setup.iss`: an opt-in "Install Conky Editor" task (unchecked
+  by default, like the LibreHardwareMonitor task) that bundles
+  `ConkyEditor.exe` next to `conky.exe` and adds a Start Menu shortcut.
+  Built from `tools/conky_editor/dist/ConkyEditor.exe`
+  (`skipifsourcedoesntexist`, so a normal conky-only build doesn't need it
+  present). Verified the installer compiles and actually includes the exe
+  (~61MB vs ~9MB without
+  it). [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+
+### Fixed
+- Stale `mingw32-make.exe ... conky.exe` / `conky.dir` target names in
+  `AGENTS.md`/`README.md`'s build instructions -- the actual CMake targets
+  are `conky` and `conky_core.dir`. Also documented that `cmake`/
+  `mingw32-make` must run from a shell with `sh` on PATH (Git Bash, not
+  plain PowerShell): `colour-names.hh` is generated via a configure-time
+  `sh`+`gperf` pipeline that fails silently without it, breaking the build
+  with a confusing, seemingly-unrelated `content/colours.cc: 'rgb' does
+  not name a type` error.
 
 ## [1.24.3-wp.4] - 2026-09-16
 

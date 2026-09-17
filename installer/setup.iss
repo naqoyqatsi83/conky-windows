@@ -10,6 +10,10 @@
   #define SOURCE_DIR "..\build\src"
 #endif
 
+#ifndef EDITOR_SOURCE_DIR
+  #define EDITOR_SOURCE_DIR "..\tools\conky_editor\dist"
+#endif
+
 [Setup]
 AppId={{A2E3F4A5-B6C7-8901-D234-E5F6A7B8C9D0}
 AppName={#MyAppName}
@@ -41,6 +45,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
 Name: "startup"; Description: "Start Conky &automatically at login"; GroupDescription: "Startup options:"; Flags: checkedonce
 Name: "install_lhm"; Description: "Install LibreHardwareMonitor (enables CPU/GPU temperature, fan speeds, voltages - runs as tray app)"; GroupDescription: "Hardware monitoring:"; Flags: unchecked
+Name: "install_editor"; Description: "Install Conky Editor (live-preview GUI for authoring/tuning conkyrc themes - see conky-windows issue #31)"; GroupDescription: "Tools:"; Flags: unchecked
 
 [Dirs]
 Name: "{commonappdata}\Conky"
@@ -57,12 +62,19 @@ Source: "{#SOURCE_DIR}\lua_modules\*.dll"; DestDir: "{app}\lua_modules"; Flags: 
 Source: "btop.conkyrc"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\..\..\installer\LibreHardwareMonitor\*"; DestDir: "{app}\LibreHardwareMonitor"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs; Tasks: install_lhm
 Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion
+; ConkyEditor.exe is a PyInstaller build (tools/conky_editor/conky_editor.spec),
+; not produced by the CMake build -- skipifsourcedoesntexist so a normal
+; conky.exe-only build doesn't fail; see tools/README.md for how to build it.
+; Installed next to conky.exe so preview.py's frozen-build default (look
+; for conky.exe beside its own .exe) resolves with no extra configuration.
+Source: "{#EDITOR_SOURCE_DIR}\ConkyEditor.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: install_editor
 
 [Icons]
 Name: "{group}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; IconFilename: "{app}\conky.ico"
 Name: "{group}\Conky (edit config)"; Filename: "notepad.exe"; Parameters: """{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"
 Name: "{group}\LibreHardwareMonitor"; Filename: "{app}\LibreHardwareMonitor\LibreHardwareMonitor.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm
 Name: "{group}\Conky Temp Helper"; Filename: "{app}\LibreHardwareMonitor\lhm-temp.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm; Comment: "Manual launch - normally runs automatically via scheduled task"
+Name: "{group}\Conky Editor"; Filename: "{app}\ConkyEditor.exe"; WorkingDir: "{app}"; Tasks: install_editor; IconFilename: "{app}\conky.ico"
 Name: "{group}\Uninstall Conky"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\conky.ico"
 Name: "{userstartup}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: startup; IconFilename: "{app}\conky.ico"
@@ -75,6 +87,7 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conky
 Filename: "taskkill"; Parameters: "/F /IM conky.exe"; Flags: runhidden skipifdoesntexist
 Filename: "taskkill"; Parameters: "/F /IM lhm-temp.exe"; Flags: runhidden skipifdoesntexist
 Filename: "taskkill"; Parameters: "/F /IM LibreHardwareMonitor.exe"; Flags: runhidden skipifdoesntexist
+Filename: "taskkill"; Parameters: "/F /IM ConkyEditor.exe"; Flags: runhidden skipifdoesntexist
 Filename: "schtasks.exe"; Parameters: "/DELETE /TN ""ConkyTempHelper"" /F"; Flags: runhidden skipifdoesntexist
 
 [UninstallDelete]
@@ -83,6 +96,7 @@ Type: files; Name: "{commonappdata}\Conky\gpu.dat"
 Type: dirifempty; Name: "{commonappdata}\Conky"
 Type: filesandordirs; Name: "{app}\LibreHardwareMonitor"
 Type: files; Name: "{app}\conky.exe"
+Type: files; Name: "{app}\ConkyEditor.exe"
 Type: files; Name: "{app}\*.dll"
 Type: filesandordirs; Name: "{app}\lua_modules"
 Type: files; Name: "{app}\conky.ico"
@@ -99,6 +113,7 @@ begin
   Exec('taskkill', '/F /IM conky.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill', '/F /IM lhm-temp.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill', '/F /IM LibreHardwareMonitor.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill', '/F /IM ConkyEditor.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 function InitializeSetup: Boolean;

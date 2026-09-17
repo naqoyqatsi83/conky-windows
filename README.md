@@ -141,10 +141,15 @@ Via **Settings → Apps → Conky**, or right-click the Start Menu entry and sel
 
 ### Quick Build
 
+Run `cmake`/`mingw32-make` from a shell with `sh` on PATH (Git Bash, not
+plain PowerShell) -- `colour-names.hh` is generated via a configure-time
+`sh`+`gperf` pipeline that fails silently without it, breaking the build
+with a confusing `content/colours.cc: 'rgb' does not name a type` error.
+
 ```powershell
 cd build
 cmake -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON ..
-mingw32-make.exe -j$(nproc) conky.exe
+mingw32-make.exe -j$(nproc) conky
 ```
 
 ### Full Installer Build
@@ -153,7 +158,7 @@ mingw32-make.exe -j$(nproc) conky.exe
 # 1. Build conky
 cd build
 cmake -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON ..
-mingw32-make.exe -j$(nproc) conky.exe
+mingw32-make.exe -j$(nproc) conky
 
 # 2. Download LibreHardwareMonitor
 cd ..\installer
@@ -166,7 +171,15 @@ cd ..\installer
 .\build_lhm_temp.ps1
 .\check_lhm_freshness.ps1   # confirms the above actually produced a fresh build
 
-# 4. Build installer
+# 4. (Optional) Build the live-preview Conky Editor -- see tools/README.md.
+# Only needed if you want the "Install Conky Editor" installer task to have
+# something to bundle; setup.iss skips it (skipifsourcedoesntexist) otherwise.
+cd ..
+pip install pyinstaller
+python -m PyInstaller tools\conky_editor\conky_editor.spec
+
+# 5. Build installer
+cd installer
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" setup.iss
 ```
 
