@@ -48,6 +48,17 @@ version heading when that state gets tagged and merged to `main`.
   introducing a bogus object gets flagged UNKNOWN within one debounce
   cycle, with no regression to the preview-restart
   path. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+- `tools/conky_editor/conky_editor.spec`: PyInstaller packaging for the
+  editor (`python -m PyInstaller tools/conky_editor/conky_editor.spec`) --
+  a standalone `ConkyEditor.exe`, no Python install required to run it.
+  `preview.py`'s default `conky.exe` lookup is now frozen-build-aware
+  (looks next to the packaged `.exe` instead of the dev-tree `build/src/`
+  path), and `main.py` gained a `--conky-exe PATH` override plus a status-bar
+  message instead of a crash when `conky.exe` isn't found. Verified: the
+  packaged exe launches standalone (highlighting, lint panel, and position
+  controls all render correctly) and its frozen `sys.executable` resolution
+  was confirmed correct via a throwaway probe
+  build. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
 
 ## [1.24.3-wp.4] - 2026-09-16
 

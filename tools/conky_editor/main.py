@@ -88,13 +88,13 @@ _GRID_POSITIONS = [
 
 
 class ConkyEditorWindow(QMainWindow):
-    def __init__(self, initial_path: Path | None) -> None:
+    def __init__(self, initial_path: Path | None, conky_exe: Path | None = None) -> None:
         super().__init__()
         self.setWindowTitle("Conky Editor")
         self.resize(1000, 700)
 
         self._current_path: Path | None = None
-        self._preview = PreviewProcess()
+        self._preview = PreviewProcess(conky_exe) if conky_exe else PreviewProcess()
         self._temp_file = tempfile.NamedTemporaryFile(
             suffix=".conkyrc", delete=False, mode="w"
         )
@@ -245,6 +245,12 @@ class ConkyEditorWindow(QMainWindow):
             self.preview_button.setText("Start Preview")
             self.status_label.setText("Preview stopped.")
         else:
+            if not self._preview.conky_exe.exists():
+                self.status_label.setText(
+                    f"conky.exe not found at {self._preview.conky_exe} "
+                    "-- pass --conky-exe PATH or place conky.exe next to this app."
+                )
+                return
             self._write_temp_file()
             self._preview.start(self._temp_path)
             self.preview_button.setText("Stop Preview")
@@ -359,6 +365,13 @@ def main() -> int:
     parser.add_argument(
         "config", nargs="?", type=Path, help="conkyrc file to open on startup"
     )
+    parser.add_argument(
+        "--conky-exe",
+        type=Path,
+        default=None,
+        help="path to conky.exe (default: build/src/conky.exe in the repo, "
+        "or conky.exe next to this app when packaged)",
+    )
     args = parser.parse_args()
 
     if args.config is not None and not args.config.exists():
@@ -366,7 +379,7 @@ def main() -> int:
         return 1
 
     app = QApplication(sys.argv)
-    window = ConkyEditorWindow(args.config)
+    window = ConkyEditorWindow(args.config, args.conky_exe)
     window.show()
     return app.exec()
 

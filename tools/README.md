@@ -69,3 +69,22 @@ token, and message -- the same output the CLI tool would give you, just
 live as you type instead of a one-shot report.
 
 Requires PySide6 (`pip install PySide6`).
+
+### Packaging as a standalone .exe
+
+For people who shouldn't need a Python install to run the editor:
+
+```powershell
+pip install pyinstaller
+python -m PyInstaller tools\conky_editor\conky_editor.spec
+```
+
+Produces `tools\conky_editor\dist\ConkyEditor.exe` -- a standalone,
+double-clickable GUI app (no console window, no Python required). It does
+*not* bundle `conky.exe` itself (that's a separate native binary this app
+launches as a subprocess, not a Python dependency PyInstaller can embed):
+copy `build\src\conky.exe` into the same folder as `ConkyEditor.exe` before
+distributing it (the packaged build auto-detects a `conky.exe` next to its
+own `.exe`), or point it elsewhere with `ConkyEditor.exe --conky-exe
+PATH`. `dist/` and the intermediate `pyi_build/` are gitignored -- rebuild
+locally rather than committing the ~45MB binary.

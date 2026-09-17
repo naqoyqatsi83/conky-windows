@@ -10,9 +10,20 @@ relaunches the process rather than reloading in place.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
-DEFAULT_CONKY_EXE = Path(__file__).resolve().parents[2] / "build" / "src" / "conky.exe"
+
+def _default_conky_exe() -> Path:
+    if getattr(sys, "frozen", False):
+        # Packaged build (PyInstaller): __file__ points into the extracted
+        # bundle, not anywhere near a real conky.exe. Expect conky.exe to
+        # ship alongside the packaged editor .exe instead.
+        return Path(sys.executable).resolve().parent / "conky.exe"
+    return Path(__file__).resolve().parents[2] / "build" / "src" / "conky.exe"
+
+
+DEFAULT_CONKY_EXE = _default_conky_exe()
 
 
 class PreviewProcess:
