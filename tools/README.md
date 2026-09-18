@@ -58,6 +58,12 @@ redundant `-1`. `monitors.py` enumerates monitors via `EnumDisplayMonitors`
 in the same order `xinerama_head` indexes into
 (`src/output/display-windows.cc`'s `resolve_target_monitor()`).
 
+`line_number_edit.py`'s `LineNumberTextEdit` (the standard Qt "Code
+Editor" gutter pattern) gives the main text pane line numbers -- one per
+logical line, drawn once at that line's first visual row, so a long
+`${exec ...}` line wrapped (View > Wrap Long Lines) into several rows
+still shows a single, correct number instead of miscounting.
+
 `highlighter.py` is a minimal `QSyntaxHighlighter`: `${...}` object
 references are highlighted distinctly, reusing `backport_conkyrc.py`'s own
 `scan_objects()` tokenizer so it's brace-depth aware (correctly skips over

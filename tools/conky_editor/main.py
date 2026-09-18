@@ -49,6 +49,7 @@ import backport_conkyrc
 import config_io
 import monitors
 from highlighter import ConkyHighlighter
+from line_number_edit import LineNumberTextEdit
 from preview import PreviewProcess
 
 _LINT_COLORS = {
@@ -124,7 +125,7 @@ class ConkyEditorWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.setCentralWidget(splitter)
 
-        self.editor = QPlainTextEdit(self)
+        self.editor = LineNumberTextEdit(self)
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.editor.textChanged.connect(self._on_text_changed)
         splitter.addWidget(self.editor)

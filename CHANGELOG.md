@@ -83,6 +83,13 @@ version heading when that state gets tagged and merged to `main`.
   running off the visible width, and a new **View** menu (the editor's
   first menu bar) has a "Wrap Long Lines" toggle for the main text
   pane. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
+- `tools/conky_editor/`: the main text pane now has line numbers
+  (`line_number_edit.py`, the standard Qt "Code Editor" gutter pattern)
+  -- one number per logical line, drawn once at its first visual row, so
+  a long line wrapped into several rows via "Wrap Long Lines" still shows
+  a single correct number instead of miscounting. Verified visually with
+  wrap on: a 4-visual-row wrapped line shows its number
+  once. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3
   anchor grid and `gap_x`/`gap_y` fields mirroring conky's own
