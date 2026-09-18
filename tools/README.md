@@ -92,8 +92,17 @@ stale. Double-click/Enter inserts `${name}` at the cursor, left
 positioned right before the closing `}` so typing arguments is a single
 continuation. Names only -- no argument-signature data exists anywhere in
 this codebase in structured form (see issue #39), so this is a browsable
-reference and quick-insert, not full autocomplete-as-you-type; that's the
-noted v2 if ever wanted.
+reference and quick-insert, not full autocomplete-as-you-type -- for
+that, see the inline autocomplete below.
+
+`line_number_edit.py`'s `LineNumberTextEdit` also attaches a `QCompleter`
+(v2): typing right after `${` pops up matching object names, narrowing as
+you keep typing, from the same `KNOWN_OBJECTS` list. Tab/Enter accepts
+the highlighted suggestion (completing just the typed prefix, leaving
+anything already after the cursor untouched), Up/Down navigates the
+popup, Escape dismisses without inserting. Argument-signature data still
+doesn't exist anywhere in this codebase in structured form, so the popup
+offers names only, same limitation as the browser above.
 
 Requires PySide6 (`pip install PySide6`).
 

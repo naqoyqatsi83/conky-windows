@@ -115,6 +115,17 @@ version heading when that state gets tagged and merged to `main`.
   (confirmed by typing one right after), the dialog stays open/reusable
   for inserting several objects in a row, and no regression to preview/
   live-reload/lint. [#39](https://github.com/naqoyqatsi83/conky-windows/issues/39)
+- `tools/conky_editor/`: inline autocomplete (v2, `LineNumberTextEdit` +
+  `QCompleter`) -- typing right after `${` pops up matching object
+  names, narrowing as you keep typing; Tab/Enter accepts the highlighted
+  suggestion, Up/Down navigates, Escape dismisses without inserting.
+  Same `KNOWN_OBJECTS` source as the v1 object browser. Verified via
+  `QTest.keyClicks`/`keyClick` simulating real typing: popup appears
+  with the right filtered count, Tab-accept inserts correctly and hides
+  the popup, Escape leaves the text untouched, Down-arrow changes the
+  highlighted suggestion, and the popup never appears for unrelated
+  typing (after a closing `}`, or elsewhere in the
+  document). [#39](https://github.com/naqoyqatsi83/conky-windows/issues/39)
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3
   anchor grid and `gap_x`/`gap_y` fields mirroring conky's own
