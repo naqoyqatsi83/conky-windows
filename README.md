@@ -115,7 +115,7 @@ Download the latest installer from [GitHub Releases](https://github.com/YOUR_USE
 | `conky.exe` | The Conky system monitor |
 | `lhm-temp.exe` | Temperature helper (writes CPU/GPU temp to shared file) |
 | `LibreHardwareMonitorLib.dll` | Hardware sensor library |
-| `btop.conkyrc` | Sample configuration (installed to `%USERPROFILE%\Documents\Conky\`) |
+| `conkyrc` | Sample configuration, btop-inspired layout (installed to `%USERPROFILE%\Documents\Conky\`) |
 
 ### Uninstall
 
@@ -214,7 +214,7 @@ conky.exe -c "C:\path\to\my.conkyrc"
 
 ### Sample Config
 
-The installer provides a sample config at `%USERPROFILE%\Documents\Conky\btop.conkyrc` (btop-inspired layout):
+The installer provides a sample config at `%USERPROFILE%\Documents\Conky\conkyrc` (btop-inspired layout):
 
 ```lua
 conky.config = {

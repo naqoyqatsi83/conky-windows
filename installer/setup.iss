@@ -50,6 +50,14 @@ Name: "install_editor"; Description: "Install Conky Editor (live-preview GUI for
 [Dirs]
 Name: "{commonappdata}\Conky"
 
+[InstallDelete]
+; Stale reference copy from before the sample config was renamed
+; btop.conkyrc -> conkyrc; upgrading otherwise leaves it orphaned in
+; {app} since Inno Setup doesn't remove files no longer listed in
+; [Files]. The user's actual per-user config gets migrated (not
+; deleted) by CreateConfig() below, not touched here.
+Type: files; Name: "{app}\btop.conkyrc"
+
 [Files]
 Source: "{#SOURCE_DIR}\conky.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
@@ -59,7 +67,7 @@ Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsour
 ; Lua module "cairo.dll" can't collide with the real cairo.dll library
 ; above despite sharing a filename.
 Source: "{#SOURCE_DIR}\lua_modules\*.dll"; DestDir: "{app}\lua_modules"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs
-Source: "btop.conkyrc"; DestDir: "{app}"; Flags: ignoreversion
+Source: "conkyrc"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\..\..\installer\LibreHardwareMonitor\*"; DestDir: "{app}\LibreHardwareMonitor"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs; Tasks: install_lhm
 Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; ConkyEditor.exe is a PyInstaller build (tools/conky_editor/conky_editor.spec),
@@ -70,18 +78,18 @@ Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#EDITOR_SOURCE_DIR}\ConkyEditor.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: install_editor
 
 [Icons]
-Name: "{group}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; IconFilename: "{app}\conky.ico"
-Name: "{group}\Conky (edit config)"; Filename: "notepad.exe"; Parameters: """{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"
+Name: "{group}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"; IconFilename: "{app}\conky.ico"
+Name: "{group}\Conky (edit config)"; Filename: "notepad.exe"; Parameters: """{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"
 Name: "{group}\LibreHardwareMonitor"; Filename: "{app}\LibreHardwareMonitor\LibreHardwareMonitor.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm
 Name: "{group}\Conky Temp Helper"; Filename: "{app}\LibreHardwareMonitor\lhm-temp.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm; Comment: "Manual launch - normally runs automatically via scheduled task"
 Name: "{group}\Conky Editor"; Filename: "{app}\ConkyEditor.exe"; WorkingDir: "{app}"; Tasks: install_editor; IconFilename: "{app}\conky.ico"
 Name: "{group}\Uninstall Conky"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\conky.ico"
-Name: "{userstartup}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: startup; IconFilename: "{app}\conky.ico"
+Name: "{autodesktop}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\conky.ico"
+Name: "{userstartup}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"; Tasks: startup; IconFilename: "{app}\conky.ico"
 Name: "{userstartup}\LibreHardwareMonitor"; Filename: "{app}\LibreHardwareMonitor\LibreHardwareMonitor.exe"; Parameters: "--minimize"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"" -d"; Description: "Launch Conky"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"" -d"; Description: "Launch Conky"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
 Filename: "taskkill"; Parameters: "/F /IM conky.exe"; Flags: runhidden skipifdoesntexist
@@ -282,17 +290,44 @@ procedure CreateConfig;
 var
   ConfigPath: string;
   ConfigDir: string;
+  OldConfigPath: string;
   GpuIdx: Integer;
   GpuIdxStr: string;
   Lines: TArrayOfString;
   I: Integer;
 begin
-  ConfigPath := ExpandConstant('{userdocs}\Conky\btop.conkyrc');
+  ConfigPath := ExpandConstant('{userdocs}\Conky\conkyrc');
   ConfigDir := ExpandConstant('{userdocs}\Conky');
 
   // Ensure the config directory exists
   if not DirExists(ConfigDir) then
     CreateDir(ConfigDir);
+
+  // Migrate installs from before the sample config was renamed from
+  // btop.conkyrc to conkyrc: an existing btop.conkyrc (quite possibly
+  // hand-tuned) would otherwise sit orphaned under the old name while
+  // the logic below silently generates a fresh, uncustomized conkyrc --
+  // exactly the kind of surprise this whole guard exists to avoid.
+  OldConfigPath := ExpandConstant('{userdocs}\Conky\btop.conkyrc');
+  if FileExists(OldConfigPath) and not FileExists(ConfigPath) then
+    RenameFile(OldConfigPath, ConfigPath);
+
+  // Never clobber an existing config on reinstall/upgrade -- it may well
+  // be hand-tuned (e.g. via the Conky Editor, issue #31). Ask first on an
+  // interactive install; a silent install has no one to click a dialog
+  // (the same lesson run_elevated.ps1 hit trying to avoid a UAC prompt),
+  // so it always keeps the existing file rather than risk overwriting
+  // someone's real config unattended.
+  if FileExists(ConfigPath) then
+  begin
+    if WizardSilent() then
+      exit;
+    if MsgBox('A config file already exists at:' + #13#10 + ConfigPath + #13#10 +
+        'Overwrite it with the default sample config? Choose "No" to keep ' +
+        'your existing config unchanged.',
+        mbConfirmation, MB_YESNO) = IDNO then
+      exit;
+  end;
 
   // Detect GPU - wait a bit only if lhm-temp was actually installed
   if FileExists(ExpandConstant('{app}\LibreHardwareMonitor\lhm-temp.exe')) then
@@ -301,7 +336,7 @@ begin
   GpuIdxStr := IntToStr(GpuIdx);
 
   // Build config content inline (avoids LoadStringsFromFile entirely)
-  // This is a copy of btop.conkyrc with GPU_IDX as the placeholder.
+  // This is a copy of conkyrc with GPU_IDX as the placeholder.
   try
     SetArrayLength(Lines, 67);
     Lines[0]  := 'conky.config = {';
@@ -381,7 +416,7 @@ begin
     SaveStringsToFile(ConfigPath, Lines, False);
   except
     // If inline generation fails for any reason, skip config creation.
-    // The user can manually copy the template from {app}\btop.conkyrc.
+    // The user can manually copy the template from {app}\conkyrc.
   end;
 end;
 
