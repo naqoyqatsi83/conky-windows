@@ -265,7 +265,7 @@ class ConkyEditorWindow(QMainWindow):
         if not self._preview.running:
             return
         self._write_temp_file()
-        self._preview.restart(self._temp_path)
+        self._preview.sync(self._temp_path)
 
     def _on_debounce(self) -> None:
         self._update_lint()

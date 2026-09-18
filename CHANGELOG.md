@@ -65,6 +65,17 @@ version heading when that state gets tagged and merged to `main`.
   before/after screenshot; separately confirmed `disable_auto_reload =
   true` suppresses
   it. [#34](https://github.com/naqoyqatsi83/conky-windows/issues/34)
+- `tools/conky_editor/`'s preview now uses #34's live-reload instead of
+  killing and relaunching `conky.exe` on every edit:
+  `PreviewProcess.sync()` only spawns a process for the first launch (or
+  if the preview isn't running for any reason); an already-running
+  preview just gets its temp file rewritten and reloads itself. Avoids a
+  full OS process respawn (and the GPU-sensor scheduled-task retrigger
+  that comes with every `conky.exe` launch) on every debounce tick.
+  Verified: 5 rapid text edits kept the same PID throughout (no
+  respawn), and an alignment-grid change correctly repositioned the
+  window via live-reload with no respawn
+  either. [#35](https://github.com/naqoyqatsi83/conky-windows/issues/35)
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3
   anchor grid and `gap_x`/`gap_y` fields mirroring conky's own

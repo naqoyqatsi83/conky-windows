@@ -40,10 +40,13 @@ python tools\conky_editor\main.py [path\to\theme.conkyrc]
 
 The preview is driven by the actual `conky.exe` (`build\src\conky.exe` by
 default), not a second rendering implementation: every edit is debounced
-(~400ms), written to a managed temp file, and the previous preview process is
-killed and a fresh one launched against it. There's no usable cross-process
-config-reload signal on this Windows port to reload in place instead (see
-`preview.py`'s docstring).
+(~400ms) and written to a managed temp file. `conky.exe` watches its own
+config file's mtime and reloads itself in-process (issue #34), so
+`PreviewProcess.sync()` only spawns a fresh process for the very first
+launch (or if the preview isn't running for any reason) -- an already-running
+preview just gets its temp file rewritten and reloads itself, no process
+kill+relaunch needed. See `preview.py`'s docstring for how this worked
+before #34 landed (no cross-process reload signal existed on Windows).
 
 `config_io.py` does targeted regex substitution of `alignment`/`gap_x`/
 `gap_y`/`xinerama_head` in `conky.config = { ... }` -- like
