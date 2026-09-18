@@ -14,6 +14,21 @@ section in [AGENTS.md](AGENTS.md) for how work flows from issue to
 Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
+### Fixed
+- `${cpugraph}` intermittently drew a stray line spanning almost the
+  full window height for one frame right after `conky.exe` started.
+  `info.cpu_usage` was allocated with `malloc` (uninitialized); the
+  first-ever CPU% sample has no prior baseline to diff against, so it's
+  correctly skipped, but that left `${cpu}`/`${cpugraph}` reading raw
+  heap garbage for that one frame. Fixed by allocating with `calloc`
+  instead, plus a defensive clamp on the graph bar's drawn extent
+  (matching the existing `grad_idx` clamp in the same function, from
+  the issue #1 SIGSEGV investigation) so any future bad value degrades
+  to a malformed-but-contained bar rather than a stray full-height
+  line. Reproduced reliably (21 anomalies / 20 fresh launches) and
+  confirmed fixed (0 / 20) via temporary diagnostic
+  logging. [#33](https://github.com/naqoyqatsi83/conky-windows/issues/33)
+
 ### Added
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3

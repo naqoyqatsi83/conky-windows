@@ -1139,6 +1139,13 @@ static inline void draw_graph_bars(special_node *current,
                      : round_to_positive_int(static_cast<double>(by) + h - 1 -
                                              current->graph_data[j] * (h - 1) /
                                                  current->scale);
+  /* Clamp to the bar's own box: graph_data[j]/scale is data from a data
+   * source, not something this drawing code should trust blindly (see the
+   * grad_idx clamp above, same reasoning) -- an unexpected value here (e.g.
+   * issue with an uninitialized-on-first-sample data source) previously
+   * drew a stray line the full height of the window instead of a
+   * malformed-but-contained bar. */
+  offsety2 = std::clamp(offsety2, by, by + h - 1);
   /* this is mugfugly, but it works */
   if (display_output()) {
     display_output()->draw_line(
