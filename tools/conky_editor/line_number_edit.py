@@ -141,6 +141,16 @@ class LineNumberTextEdit(QPlainTextEdit):
             len(prefix),
         )
         cursor.insertText(completion)
+        # Close the brace too -- unless one is already sitting right where
+        # the cursor now is (e.g. completing inside "${cp|}" typed by
+        # hand), in which case just step over it instead of doubling up.
+        doc_text = self.toPlainText()
+        pos = cursor.position()
+        if doc_text[pos : pos + 1] == "}":
+            cursor.movePosition(QTextCursor.MoveOperation.Right)
+        else:
+            cursor.insertText("}")
+            cursor.movePosition(QTextCursor.MoveOperation.Left)
         self.setTextCursor(cursor)
 
     def keyPressEvent(self, event) -> None:

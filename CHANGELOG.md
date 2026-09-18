@@ -15,6 +15,14 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Fixed
+- `tools/conky_editor/`'s inline autocomplete (#39 v2) wasn't closing the
+  brace on accept -- `${cp` + Tab produced `${cpu`, not `${cpu}`. Fixed:
+  accepting now inserts the closing `}` too (cursor left right before
+  it, same as the v1 object browser), unless one is already sitting
+  right there (completing inside an already-closed `${cp|}`), in which
+  case it just steps over instead of doubling up. Verified both cases
+  via `QTest` keystroke simulation, plus a full regression pass (no
+  respawn on edit, lint still works).
 - A spdlog write/rotation failure (e.g. from rapid config reloads,
   #34, hitting the log file while another handle briefly has it open)
   crashed the whole process instead of being handled by this project's
