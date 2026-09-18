@@ -2054,6 +2054,15 @@ void main_loop() {
 #define INOTIFY_EVENT_SIZE (sizeof(struct inotify_event))
 #define INOTIFY_BUF_LEN (20 * (INOTIFY_EVENT_SIZE + 16)) + 1
   char inotify_buff[INOTIFY_BUF_LEN];
+#else
+  /* No inotify on this platform (Windows) -- poll the config file's mtime
+   * once per loop iteration instead of a real filesystem-event watch (see
+   * the matching #else block below). Latency is bounded by
+   * update_interval, not a background thread's own timing; simplest
+   * correct option for this single-threaded loop. conky-windows issue
+   * #34. */
+  std::filesystem::file_time_type last_config_mtime{};
+  bool have_config_mtime = false;
 #endif /* HAVE_SYS_INOTIFY_H */
 
 #ifdef SIGNAL_BLOCKING
@@ -2192,6 +2201,21 @@ void main_loop() {
       inotify_rm_watch(inotify_fd, inotify_config_wd);
       close(inotify_fd);
       inotify_fd = inotify_config_wd = -1;
+    }
+#else
+    if (!disable_auto_reload.get(*state) && !current_config.empty()) {
+      std::error_code ec;
+      auto mtime = std::filesystem::last_write_time(current_config, ec);
+      if (!ec) {
+        if (!have_config_mtime) {
+          last_config_mtime = mtime;
+          have_config_mtime = true;
+        } else if (mtime != last_config_mtime) {
+          last_config_mtime = mtime;
+          LOG_INFO("'{}' modified, reloading", current_config);
+          reload_config();
+        }
+      }
     }
 #endif /* HAVE_SYS_INOTIFY_H */
 

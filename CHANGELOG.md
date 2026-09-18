@@ -39,6 +39,19 @@ version heading when that state gets tagged and merged to `main`.
   for). [#41](https://github.com/naqoyqatsi83/conky-windows/issues/41)
 
 ### Added
+- Live config-reload on Windows: editing and saving a running instance's
+  config file now updates it in place, no restart needed -- parity with
+  Linux's inotify-based auto-reload, which was entirely absent on this
+  port (`HAVE_SYS_INOTIFY_H` is Linux-only). Since Windows has no
+  inotify equivalent wired up here, `main_loop()` polls the config
+  file's mtime once per update cycle instead (bounded latency, no
+  extra thread) and calls the existing cross-platform `reload_config()`
+  -- respects `disable_auto_reload` same as Linux. Verified live: edited
+  a running instance's config, confirmed it picked up the change with
+  the same PID (no process restart) via a debug log grep and a
+  before/after screenshot; separately confirmed `disable_auto_reload =
+  true` suppresses
+  it. [#34](https://github.com/naqoyqatsi83/conky-windows/issues/34)
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3
   anchor grid and `gap_x`/`gap_y` fields mirroring conky's own
