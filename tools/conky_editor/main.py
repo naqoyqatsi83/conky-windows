@@ -19,7 +19,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -37,6 +36,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSpinBox,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -119,17 +119,22 @@ class ConkyEditorWindow(QMainWindow):
     # -- UI construction ----------------------------------------------
 
     def _build_ui(self) -> None:
-        central = QWidget(self)
-        self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.setCentralWidget(splitter)
 
         self.editor = QPlainTextEdit(self)
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.editor.textChanged.connect(self._on_text_changed)
-        layout.addWidget(self.editor, stretch=3)
+        splitter.addWidget(self.editor)
 
-        side = QVBoxLayout()
-        layout.addLayout(side, stretch=1)
+        side_widget = QWidget(self)
+        side = QVBoxLayout(side_widget)
+        splitter.addWidget(side_widget)
+        # Initial 3:1 split matching the old fixed-stretch layout -- just a
+        # starting point now, the divider is draggable (issue #37).
+        splitter.setSizes([750, 250])
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 0)
 
         self.preview_button = QPushButton("Start Preview", self)
         self.preview_button.clicked.connect(self._toggle_preview)
