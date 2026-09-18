@@ -221,7 +221,8 @@ class ConkyEditorWindow(QMainWindow):
     def _open_dialog(self) -> None:
         start_dir = str(self._current_path.parent) if self._current_path else ""
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open conkyrc", start_dir, "Conky config (*.conkyrc);;All files (*)"
+            self, "Open conkyrc", start_dir,
+            "Conky config (conkyrc *.conkyrc);;All files (*)",
         )
         if filename:
             self._load_file(Path(filename))
@@ -229,7 +230,8 @@ class ConkyEditorWindow(QMainWindow):
     def _save(self) -> None:
         if self._current_path is None:
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Save conkyrc", "", "Conky config (*.conkyrc);;All files (*)"
+                self, "Save conkyrc", "",
+                "Conky config (conkyrc *.conkyrc);;All files (*)",
             )
             if not filename:
                 return
