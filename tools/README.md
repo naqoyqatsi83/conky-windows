@@ -62,7 +62,15 @@ in the same order `xinerama_head` indexes into
 Editor" gutter pattern) gives the main text pane line numbers -- one per
 logical line, drawn once at that line's first visual row, so a long
 `${exec ...}` line wrapped (View > Wrap Long Lines) into several rows
-still shows a single, correct number instead of miscounting.
+still shows a single, correct number instead of miscounting. On by
+default; toggle via View > Show Line Numbers.
+
+The **View** menu's toggle states (wrap, line numbers) persist across
+runs via `QSettings` in INI format -- a plain text file at
+`%APPDATA%\ConkyWindows\ConkyEditor.ini`, not the Windows registry, so
+it's easy to find/inspect/delete. Delete that file (or the
+`%APPDATA%\ConkyWindows\` folder) to reset the editor's view preferences
+to defaults.
 
 `highlighter.py` is a minimal `QSyntaxHighlighter`: `${...}` object
 references are highlighted distinctly, reusing `backport_conkyrc.py`'s own

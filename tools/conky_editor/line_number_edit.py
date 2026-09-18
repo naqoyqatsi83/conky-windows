@@ -30,12 +30,22 @@ class _LineNumberArea(QWidget):
 class LineNumberTextEdit(QPlainTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self._visible = True
         self._line_number_area = _LineNumberArea(self)
         self.blockCountChanged.connect(self._update_line_number_area_width)
         self.updateRequest.connect(self._update_line_number_area)
         self._update_line_number_area_width()
 
+    def set_line_numbers_visible(self, visible: bool) -> None:
+        if visible == self._visible:
+            return
+        self._visible = visible
+        self._update_line_number_area_width()
+        self._line_number_area.setVisible(visible)
+
     def line_number_area_width(self) -> int:
+        if not self._visible:
+            return 0
         digits = len(str(max(1, self.blockCount())))
         return 12 + self.fontMetrics().horizontalAdvance("9") * digits
 

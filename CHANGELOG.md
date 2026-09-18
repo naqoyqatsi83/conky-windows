@@ -90,6 +90,17 @@ version heading when that state gets tagged and merged to `main`.
   a single correct number instead of miscounting. Verified visually with
   wrap on: a 4-visual-row wrapped line shows its number
   once. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
+- `tools/conky_editor/`: a "Show Line Numbers" View menu toggle (on by
+  default), and the View menu's toggle states (wrap, line numbers) now
+  persist across runs via `QSettings` in INI format --
+  `%APPDATA%\ConkyWindows\ConkyEditor.ini`, a plain text file rather than
+  the registry, easy to find/inspect/delete. Verified: defaults are
+  correct on a fresh settings file (wrap off, line numbers on), toggling
+  both and relaunching a fresh window instance loads the persisted
+  values correctly, and hiding line numbers collapses the gutter to zero
+  width as expected -- with no regression to preview/live-reload/lint
+  wired up alongside
+  it. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3
   anchor grid and `gap_x`/`gap_y` fields mirroring conky's own

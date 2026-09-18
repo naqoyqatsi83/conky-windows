@@ -19,7 +19,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -94,6 +94,17 @@ class ConkyEditorWindow(QMainWindow):
         self.setWindowTitle("Conky Editor")
         self.resize(1000, 700)
 
+        # IniFormat forces a plain text file instead of the Windows registry
+        # -- easy to find/inspect/delete for a small tool like this. Lands at
+        # %APPDATA%\ConkyWindows\ConkyEditor.ini (UserScope resolves there
+        # for IniFormat on Windows).
+        self._settings = QSettings(
+            QSettings.Format.IniFormat,
+            QSettings.Scope.UserScope,
+            "ConkyWindows",
+            "ConkyEditor",
+        )
+
         self._current_path: Path | None = None
         self._preview = PreviewProcess(conky_exe) if conky_exe else PreviewProcess()
         self._temp_file = tempfile.NamedTemporaryFile(
@@ -120,8 +131,6 @@ class ConkyEditorWindow(QMainWindow):
     # -- UI construction ----------------------------------------------
 
     def _build_ui(self) -> None:
-        self._build_menu()
-
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.setCentralWidget(splitter)
 
@@ -129,6 +138,9 @@ class ConkyEditorWindow(QMainWindow):
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.editor.textChanged.connect(self._on_text_changed)
         splitter.addWidget(self.editor)
+
+        # Menu references self.editor, so it's built once that exists.
+        self._build_menu()
 
         side_widget = QWidget(self)
         side = QVBoxLayout(side_widget)
@@ -161,9 +173,26 @@ class ConkyEditorWindow(QMainWindow):
 
     def _build_menu(self) -> None:
         view_menu = self.menuBar().addMenu("&View")
+
         self.wrap_action = view_menu.addAction("Wrap Long Lines")
         self.wrap_action.setCheckable(True)
         self.wrap_action.toggled.connect(self._on_wrap_toggled)
+        self.wrap_action.blockSignals(True)
+        self.wrap_action.setChecked(
+            self._settings.value("view/wrap_long_lines", False, type=bool)
+        )
+        self.wrap_action.blockSignals(False)
+        self._on_wrap_toggled(self.wrap_action.isChecked())
+
+        self.line_numbers_action = view_menu.addAction("Show Line Numbers")
+        self.line_numbers_action.setCheckable(True)
+        self.line_numbers_action.toggled.connect(self._on_line_numbers_toggled)
+        self.line_numbers_action.blockSignals(True)
+        self.line_numbers_action.setChecked(
+            self._settings.value("view/show_line_numbers", True, type=bool)
+        )
+        self.line_numbers_action.blockSignals(False)
+        self._on_line_numbers_toggled(self.line_numbers_action.isChecked())
 
     def _on_wrap_toggled(self, checked: bool) -> None:
         mode = (
@@ -172,6 +201,11 @@ class ConkyEditorWindow(QMainWindow):
             else QPlainTextEdit.LineWrapMode.NoWrap
         )
         self.editor.setLineWrapMode(mode)
+        self._settings.setValue("view/wrap_long_lines", checked)
+
+    def _on_line_numbers_toggled(self, checked: bool) -> None:
+        self.editor.set_line_numbers_visible(checked)
+        self._settings.setValue("view/show_line_numbers", checked)
 
     def _build_lint_group(self) -> QGroupBox:
         group = QGroupBox("Lint (backport_conkyrc.py)", self)
