@@ -15,6 +15,19 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Fixed
+- A spdlog write/rotation failure (e.g. from rapid config reloads,
+  #34, hitting the log file while another handle briefly has it open)
+  crashed the whole process instead of being handled by this project's
+  own non-fatal error handler (`src/logging.cc`). Root cause:
+  `3rdparty/spdlog/CMakeLists.txt` had `SPDLOG_NO_EXCEPTIONS` forced ON
+  with no reason to (nothing else here builds with `-fno-exceptions`),
+  which makes spdlog `printf`+`abort()` directly instead of throwing --
+  completely bypassing the custom handler regardless of what it does.
+  Reproduced reliably (a rapid-reload stress test killed the process
+  within ~50-60 cycles every time) and confirmed fixed (220+ rapid
+  saves across multiple runs, zero crashes, stable GDI/USER handle
+  counts) after flipping the
+  flag. [#42](https://github.com/naqoyqatsi83/conky-windows/issues/42)
 - `${cpugraph}` intermittently drew a stray line spanning almost the
   full window height for one frame right after `conky.exe` started.
   `info.cpu_usage` was allocated with `malloc` (uninitialized); the
