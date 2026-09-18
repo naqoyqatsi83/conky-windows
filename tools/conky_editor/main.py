@@ -50,6 +50,7 @@ import config_io
 import monitors
 from highlighter import ConkyHighlighter
 from line_number_edit import LineNumberTextEdit
+from object_helper import ObjectHelperDialog, insert_object_reference
 from preview import PreviewProcess
 
 _LINT_COLORS = {
@@ -106,6 +107,7 @@ class ConkyEditorWindow(QMainWindow):
         )
 
         self._current_path: Path | None = None
+        self._object_helper: ObjectHelperDialog | None = None
         self._preview = PreviewProcess(conky_exe) if conky_exe else PreviewProcess()
         self._temp_file = tempfile.NamedTemporaryFile(
             suffix=".conkyrc", delete=False, mode="w"
@@ -162,6 +164,10 @@ class ConkyEditorWindow(QMainWindow):
         save_button = QPushButton("Save", self)
         save_button.clicked.connect(self._save)
         side.addWidget(save_button)
+
+        insert_object_button = QPushButton("Insert Object...", self)
+        insert_object_button.clicked.connect(self._open_object_helper)
+        side.addWidget(insert_object_button)
 
         side.addWidget(self._build_position_group())
 
@@ -275,6 +281,16 @@ class ConkyEditorWindow(QMainWindow):
         self.editor.setPlainText(text)
         self.editor.blockSignals(False)
         self._debounce.stop()
+
+    def _open_object_helper(self) -> None:
+        if self._object_helper is None:
+            self._object_helper = ObjectHelperDialog(self)
+            self._object_helper.object_chosen.connect(
+                lambda name: insert_object_reference(self.editor, name)
+            )
+        self._object_helper.show()
+        self._object_helper.raise_()
+        self._object_helper.activateWindow()
 
     def _open_dialog(self) -> None:
         start_dir = str(self._current_path.parent) if self._current_path else ""

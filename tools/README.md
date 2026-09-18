@@ -85,6 +85,16 @@ finding (REVIEW / UNSUPPORTED / UNKNOWN / CONFIG / EXEC) with its line,
 token, and message -- the same output the CLI tool would give you, just
 live as you type instead of a one-shot report.
 
+"Insert Object..." opens a non-modal, searchable browser
+(`object_helper.py`) of every real object name -- sourced from the same
+`backport_conkyrc.KNOWN_OBJECTS` the lint panel uses, so it never goes
+stale. Double-click/Enter inserts `${name}` at the cursor, left
+positioned right before the closing `}` so typing arguments is a single
+continuation. Names only -- no argument-signature data exists anywhere in
+this codebase in structured form (see issue #39), so this is a browsable
+reference and quick-insert, not full autocomplete-as-you-type; that's the
+noted v2 if ever wanted.
+
 Requires PySide6 (`pip install PySide6`).
 
 ### Packaging as a standalone .exe

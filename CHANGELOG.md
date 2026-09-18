@@ -101,6 +101,20 @@ version heading when that state gets tagged and merged to `main`.
   width as expected -- with no regression to preview/live-reload/lint
   wired up alongside
   it. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
+- `tools/conky_editor/`: an "Insert Object..." button opens a non-modal,
+  searchable browser (`object_helper.py`) of every real conky object
+  name (458 objects), sourced from the same live-parsed
+  `backport_conkyrc.KNOWN_OBJECTS` the lint panel already uses.
+  Double-click/Enter inserts `${name}` at the cursor, positioned right
+  before the closing `}` so typing arguments continues in one motion.
+  Names only -- no argument-signature data exists anywhere in this
+  codebase in structured form, so full autocomplete-as-you-type is
+  explicitly left as a v2 for later. Verified: 458 objects listed,
+  filtering narrows correctly (e.g. "cpu" -> 6 matches), insertion lands
+  at the right position with the cursor ready for a following argument
+  (confirmed by typing one right after), the dialog stays open/reusable
+  for inserting several objects in a row, and no regression to preview/
+  live-reload/lint. [#39](https://github.com/naqoyqatsi83/conky-windows/issues/39)
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3
   anchor grid and `gap_x`/`gap_y` fields mirroring conky's own
