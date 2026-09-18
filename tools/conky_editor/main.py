@@ -119,6 +119,8 @@ class ConkyEditorWindow(QMainWindow):
     # -- UI construction ----------------------------------------------
 
     def _build_ui(self) -> None:
+        self._build_menu()
+
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.setCentralWidget(splitter)
 
@@ -156,6 +158,20 @@ class ConkyEditorWindow(QMainWindow):
 
         side.addWidget(self._build_lint_group(), stretch=1)
 
+    def _build_menu(self) -> None:
+        view_menu = self.menuBar().addMenu("&View")
+        self.wrap_action = view_menu.addAction("Wrap Long Lines")
+        self.wrap_action.setCheckable(True)
+        self.wrap_action.toggled.connect(self._on_wrap_toggled)
+
+    def _on_wrap_toggled(self, checked: bool) -> None:
+        mode = (
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+            if checked
+            else QPlainTextEdit.LineWrapMode.NoWrap
+        )
+        self.editor.setLineWrapMode(mode)
+
     def _build_lint_group(self) -> QGroupBox:
         group = QGroupBox("Lint (backport_conkyrc.py)", self)
         layout = QVBoxLayout(group)
@@ -163,6 +179,8 @@ class ConkyEditorWindow(QMainWindow):
         self.lint_summary_label.setWordWrap(True)
         layout.addWidget(self.lint_summary_label)
         self.lint_list = QListWidget(group)
+        self.lint_list.setWordWrap(True)
+        self.lint_list.setResizeMode(QListWidget.ResizeMode.Adjust)
         layout.addWidget(self.lint_list)
         return group
 

@@ -79,6 +79,10 @@ version heading when that state gets tagged and merged to `main`.
 - `tools/conky_editor/`: the text pane / side panel split is now a
   draggable `QSplitter` instead of a fixed 3:1
   layout. [#37](https://github.com/naqoyqatsi83/conky-windows/issues/37)
+- `tools/conky_editor/`: the Lint panel now wraps long findings instead of
+  running off the visible width, and a new **View** menu (the editor's
+  first menu bar) has a "Wrap Long Lines" toggle for the main text
+  pane. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
   text pane + a real, live-updating `conky.exe` preview, plus a 3x3
   anchor grid and `gap_x`/`gap_y` fields mirroring conky's own
