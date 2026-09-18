@@ -35,9 +35,8 @@ version heading when that state gets tagged and merged to `main`.
   `FileExists` first and asks via a dialog on an interactive install
   (silent installs always keep the existing file -- no one to click a
   dialog). Also renamed the sample config `btop.conkyrc` -> `conkyrc`
-  (generic default name), with a one-time migration for existing installs
-  so a customized `btop.conkyrc` doesn't get orphaned under the old
-  name. [#41](https://github.com/naqoyqatsi83/conky-windows/issues/41)
+  (generic default name, no pre-release installed base worth migrating
+  for). [#41](https://github.com/naqoyqatsi83/conky-windows/issues/41)
 
 ### Added
 - `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --

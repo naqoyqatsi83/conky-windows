@@ -50,14 +50,6 @@ Name: "install_editor"; Description: "Install Conky Editor (live-preview GUI for
 [Dirs]
 Name: "{commonappdata}\Conky"
 
-[InstallDelete]
-; Stale reference copy from before the sample config was renamed
-; btop.conkyrc -> conkyrc; upgrading otherwise leaves it orphaned in
-; {app} since Inno Setup doesn't remove files no longer listed in
-; [Files]. The user's actual per-user config gets migrated (not
-; deleted) by CreateConfig() below, not touched here.
-Type: files; Name: "{app}\btop.conkyrc"
-
 [Files]
 Source: "{#SOURCE_DIR}\conky.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
@@ -290,7 +282,6 @@ procedure CreateConfig;
 var
   ConfigPath: string;
   ConfigDir: string;
-  OldConfigPath: string;
   GpuIdx: Integer;
   GpuIdxStr: string;
   Lines: TArrayOfString;
@@ -302,15 +293,6 @@ begin
   // Ensure the config directory exists
   if not DirExists(ConfigDir) then
     CreateDir(ConfigDir);
-
-  // Migrate installs from before the sample config was renamed from
-  // btop.conkyrc to conkyrc: an existing btop.conkyrc (quite possibly
-  // hand-tuned) would otherwise sit orphaned under the old name while
-  // the logic below silently generates a fresh, uncustomized conkyrc --
-  // exactly the kind of surprise this whole guard exists to avoid.
-  OldConfigPath := ExpandConstant('{userdocs}\Conky\btop.conkyrc');
-  if FileExists(OldConfigPath) and not FileExists(ConfigPath) then
-    RenameFile(OldConfigPath, ConfigPath);
 
   // Never clobber an existing config on reinstall/upgrade -- it may well
   // be hand-tuned (e.g. via the Conky Editor, issue #31). Ask first on an
