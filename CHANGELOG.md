@@ -15,6 +15,14 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Fixed
+- The default config the installer writes (`setup.iss`), the shipped
+  `installer/conkyrc` and `conky_examples/Windows-btop.conkyrc` spawned
+  ~3 `cmd.exe` + `powershell.exe` processes per second via plain
+  `${exec}` for the host name, CPU name and CPU frequency. Now
+  `${nodename}`, `${freq_g}`, and `${execi 86400 ...}` for the CPU name
+  (no built-in for it yet). Verified: the new sample started 1 child
+  process in 15 s, down from ~45.
+  [#44](https://github.com/naqoyqatsi83/conky-windows/issues/44)
 - Logoff/shutdown was flooded with un-dismissable "cmd.exe - Application
   Error (0xc0000142)" popups for any config using `${exec}`: conky kept
   spawning `cmd.exe` children while Windows was tearing the session

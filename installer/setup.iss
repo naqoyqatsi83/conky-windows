@@ -337,14 +337,14 @@ begin
     Lines[13] := '${font Segoe UI:bold:size=12}${alignc}System Monitor';
     Lines[14] := '${hr 2}';
     Lines[15] := '';
-    Lines[16] := '${font Segoe UI:bold:size=10}${exec powershell -Command "$env:COMPUTERNAME"}';
+    Lines[16] := '${font Segoe UI:bold:size=10}${nodename}';
     Lines[17] := '${font Consolas:size=10}';
     Lines[18] := 'Uptime:             ${alignr}$uptime';
     Lines[19] := '';
-    Lines[20] := '${font Segoe UI:bold:size=10}CPU [${exec powershell -Command "((Get-CimInstance Win32_Processor).Name).Trim()"}]';
+    Lines[20] := '${font Segoe UI:bold:size=10}CPU [${execi 86400 powershell -Command "((Get-CimInstance Win32_Processor).Name).Trim()"}]';
     Lines[21] := '${font Consolas:size=10}';
     Lines[22] := 'Usage:              ${alignr}${cpu}%';
-    Lines[23] := 'Freq:               ${alignr}${exec powershell -Command "& { [math]::Round(((Get-CimInstance Win32_Processor).MaxClockSpeed[0] * (Get-CimInstance Win32_PerfFormattedData_Counters_ProcessorInformation)[0].PercentProcessorPerformance) / 100 / 1000, 2) }"} GHz';
+    Lines[23] := 'Freq:               ${alignr}${freq_g} GHz';
     Lines[24] := 'Temp:               ${alignr}${acpitemp}C';
     Lines[25] := '${cpugraph 50,340 FFA500 FF4500}';
     Lines[26] := '';
