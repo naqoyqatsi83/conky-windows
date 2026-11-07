@@ -223,7 +223,7 @@ conky.config = {
   gap_x = 20, gap_y = 60,
   font = 'Consolas:size=10',
   default_color = 'white',
-  update_interval = 1.0,
+  update_interval = 2.0,
   minimum_width = 340,
   draw_shades = false,
 }
@@ -234,6 +234,16 @@ ${hr 2}
 ...
 ]]
 ```
+
+> **Tip: avoid plain `${exec}` for anything slow.** A plain `${exec cmd}`
+> runs on *every* update and the update waits for it to finish. On
+> Windows every command goes through `cmd.exe`, and starting PowerShell
+> alone takes about a second, so a few `${exec powershell ...}` lines can
+> double your real refresh time and keep a stream of processes running
+> all day. Prefer a built-in variable when one exists (`${nodename}`,
+> `${freq_g}`, `${cpu}`, ...), and use `${execi <seconds> cmd}` for
+> values that change rarely, e.g. `${execi 86400 ...}` for something
+> that never changes during a session.
 
 ### Temperature Monitoring
 

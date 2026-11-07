@@ -14,6 +14,17 @@ section in [AGENTS.md](AGENTS.md) for how work flows from issue to
 Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
+### Changed
+- Default `update_interval` is now `2.0` (installer-written config,
+  `installer/conkyrc`, `conky_examples/Windows-btop.conkyrc`, README
+  sample). The old `1.0` default never really refreshed every second:
+  its three blocking `${exec powershell ...}` calls stretched each cycle
+  to ~2 s. With those gone (#44), `1.0` became a true 1 s refresh --
+  twice the pace users were used to. `2.0` keeps the familiar pace;
+  set it back to `1.0` for faster updates. README also gained a tip on
+  `${exec}` vs `${execi}` on Windows.
+  [#45](https://github.com/naqoyqatsi83/conky-windows/issues/45)
+
 ### Fixed
 - The default config the installer writes (`setup.iss`), the shipped
   `installer/conkyrc` and `conky_examples/Windows-btop.conkyrc` spawned

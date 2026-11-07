@@ -327,7 +327,7 @@ begin
     Lines[3]  := '  gap_x = 20, gap_y = 60,';
     Lines[4]  := '  font = ''Consolas:size=10'',';
     Lines[5]  := '  default_color = ''white'',';
-    Lines[6]  := '  update_interval = 1.0,';
+    Lines[6]  := '  update_interval = 2.0,';
     Lines[7]  := '  minimum_width = 340, minimum_height = 0,';
     Lines[8]  := '  maximum_width = 350,';
     Lines[9]  := '  draw_shades = false,';
