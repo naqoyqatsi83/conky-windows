@@ -4,7 +4,7 @@ conky.config = {
   gap_x = 20, gap_y = 60,
   font = 'Consolas:size=10',
   default_color = 'white',
-  update_interval = 1.0,
+  update_interval = 2.0,
   minimum_width = 340, minimum_height = 0,
   maximum_width = 350,
   draw_shades = false,
@@ -14,14 +14,14 @@ conky.text = [[
 ${font Segoe UI:bold:size=12}${alignc}System Monitor
 ${hr 2}
 
-${font Segoe UI:bold:size=10}${exec powershell -Command "$env:COMPUTERNAME"}
+${font Segoe UI:bold:size=10}${nodename}
 ${font Consolas:size=10}
 Uptime:             ${alignr}$uptime
 
-${font Segoe UI:bold:size=10}CPU [${exec powershell -Command "((Get-CimInstance Win32_Processor).Name).Trim()"}]
+${font Segoe UI:bold:size=10}CPU [${execi 86400 powershell -Command "((Get-CimInstance Win32_Processor).Name).Trim()"}]
 ${font Consolas:size=10}
 Usage:              ${alignr}${cpu}%
-Freq:               ${alignr}${exec powershell -Command "& { [math]::Round(((Get-CimInstance Win32_Processor).MaxClockSpeed[0] * (Get-CimInstance Win32_PerfFormattedData_Counters_ProcessorInformation)[0].PercentProcessorPerformance) / 100 / 1000, 2) }"} GHz
+Freq:               ${alignr}${freq_g} GHz
 Temp:               ${alignr}${acpitemp}C
 ${cpugraph 50,340 FFA500 FF4500}
 

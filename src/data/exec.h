@@ -32,6 +32,20 @@
 
 #include "../update-cb.hh"
 
+#ifdef _WIN32
+/**
+ * Stops (true) or resumes (false) spawning ${exec*} commands.
+ *
+ * Set by the Windows display backend when the session is ending (logoff,
+ * shutdown, restart). Once Windows starts tearing the session down, any
+ * newly created process fails DLL initialization with 0xc0000142 and the
+ * system shows an un-dismissable "cmd.exe - Application Error" popup for
+ * each one -- with ${exec} firing every update interval, that is a stream
+ * of popups blocking shutdown. Cleared again if the shutdown is cancelled.
+ */
+void exec_set_session_ending(bool ending);
+#endif
+
 /**
  * A callback that executes a command and stores the output as a std::string.
  *

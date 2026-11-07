@@ -104,7 +104,17 @@ set(SPDLOG_SYSTEM_INCLUDES ON)
 option(SPDLOG_FMT_EXTERNAL "Use external fmt library instead of bundled" OFF)
 option(SPDLOG_FMT_EXTERNAL_HO "Use external fmt header-only library instead of bundled" OFF)
 # option(SPDLOG_NO_EXCEPTIONS "Compile with -fno-exceptions. Call abort() on any spdlog exceptions" OFF)
-set(SPDLOG_NO_EXCEPTIONS ON)
+# Left OFF deliberately: ON makes spdlog's SPDLOG_THROW macro printf+abort()
+# directly instead of throwing, which completely bypasses this project's own
+# custom non-fatal spdlog error handler (src/logging.cc's init_logger(),
+# added specifically so a log write/rotation failure can't take the whole
+# widget down). Nothing else in this project builds with -fno-exceptions, so
+# there's no actual reason to force this on -- confirmed the hard way: a
+# rapid-reload stress test (conky-windows issue #34's follow-up) hit
+# "spdlog fatal error: Failed writing to file ...: Bad file descriptor"
+# aborting the whole process, with none of the "conky: non-fatal logging
+# error: ..." messages our handler is supposed to print anywhere in the log.
+set(SPDLOG_NO_EXCEPTIONS OFF)
 # option(SPDLOG_NO_TZ_OFFSET "Omit %z timezone offset (use on platforms without tm_gmtoff)" OFF)
 set(SPDLOG_NO_TZ_OFFSET ON)
 

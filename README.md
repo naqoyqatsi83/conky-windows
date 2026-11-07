@@ -115,7 +115,7 @@ Download the latest installer from [GitHub Releases](https://github.com/YOUR_USE
 | `conky.exe` | The Conky system monitor |
 | `lhm-temp.exe` | Temperature helper (writes CPU/GPU temp to shared file) |
 | `LibreHardwareMonitorLib.dll` | Hardware sensor library |
-| `btop.conkyrc` | Sample configuration (installed to `%USERPROFILE%\Documents\Conky\`) |
+| `conkyrc` | Sample configuration, btop-inspired layout (installed to `%USERPROFILE%\Documents\Conky\`) |
 
 ### Uninstall
 
@@ -141,10 +141,15 @@ Via **Settings → Apps → Conky**, or right-click the Start Menu entry and sel
 
 ### Quick Build
 
+Run `cmake`/`mingw32-make` from a shell with `sh` on PATH (Git Bash, not
+plain PowerShell) -- `colour-names.hh` is generated via a configure-time
+`sh`+`gperf` pipeline that fails silently without it, breaking the build
+with a confusing `content/colours.cc: 'rgb' does not name a type` error.
+
 ```powershell
 cd build
 cmake -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON ..
-mingw32-make.exe -j$(nproc) conky.exe
+mingw32-make.exe -j$(nproc) conky
 ```
 
 ### Full Installer Build
@@ -153,7 +158,7 @@ mingw32-make.exe -j$(nproc) conky.exe
 # 1. Build conky
 cd build
 cmake -G "MinGW Makefiles" -DBUILD_NVIDIA_NVML=ON ..
-mingw32-make.exe -j$(nproc) conky.exe
+mingw32-make.exe -j$(nproc) conky
 
 # 2. Download LibreHardwareMonitor
 cd ..\installer
@@ -166,7 +171,15 @@ cd ..\installer
 .\build_lhm_temp.ps1
 .\check_lhm_freshness.ps1   # confirms the above actually produced a fresh build
 
-# 4. Build installer
+# 4. (Optional) Build the live-preview Conky Editor -- see tools/README.md.
+# Only needed if you want the "Install Conky Editor" installer task to have
+# something to bundle; setup.iss skips it (skipifsourcedoesntexist) otherwise.
+cd ..
+pip install pyinstaller
+python -m PyInstaller tools\conky_editor\conky_editor.spec
+
+# 5. Build installer
+cd installer
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" setup.iss
 ```
 
@@ -201,7 +214,7 @@ conky.exe -c "C:\path\to\my.conkyrc"
 
 ### Sample Config
 
-The installer provides a sample config at `%USERPROFILE%\Documents\Conky\btop.conkyrc` (btop-inspired layout):
+The installer provides a sample config at `%USERPROFILE%\Documents\Conky\conkyrc` (btop-inspired layout):
 
 ```lua
 conky.config = {
@@ -210,7 +223,7 @@ conky.config = {
   gap_x = 20, gap_y = 60,
   font = 'Consolas:size=10',
   default_color = 'white',
-  update_interval = 1.0,
+  update_interval = 2.0,
   minimum_width = 340,
   draw_shades = false,
 }
@@ -221,6 +234,16 @@ ${hr 2}
 ...
 ]]
 ```
+
+> **Tip: avoid plain `${exec}` for anything slow.** A plain `${exec cmd}`
+> runs on *every* update and the update waits for it to finish. On
+> Windows every command goes through `cmd.exe`, and starting PowerShell
+> alone takes about a second, so a few `${exec powershell ...}` lines can
+> double your real refresh time and keep a stream of processes running
+> all day. Prefer a built-in variable when one exists (`${nodename}`,
+> `${freq_g}`, `${cpu}`, ...), and use `${execi <seconds> cmd}` for
+> values that change rarely, e.g. `${execi 86400 ...}` for something
+> that never changes during a session.
 
 ### Temperature Monitoring
 

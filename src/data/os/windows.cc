@@ -525,7 +525,15 @@ void get_cpu_count(void) {
   SYSTEM_INFO si;
   GetSystemInfo(&si);
   info.cpu_count = si.dwNumberOfProcessors;
-  info.cpu_usage = (float *)malloc((info.cpu_count + 1) * sizeof(float));
+  /* calloc, not malloc: update_cpu_usage()/per_core_cpu.update() both skip
+   * writing their slots on the very first call (no prior sample yet to
+   * diff against), so whatever's here at that point is exactly what
+   * ${cpu}/${cpugraph} read for that first frame. malloc left it as
+   * uninitialized heap garbage -- manifested as a wildly out-of-range
+   * cpugraph bar (sometimes astronomically so) for one frame right after
+   * startup. */
+  info.cpu_usage =
+      (float *)calloc(info.cpu_count + 1, sizeof(float));
   if (info.cpu_usage == nullptr) {
     SYSTEM_ERR("failed to allocate cpu_usage array");
   }

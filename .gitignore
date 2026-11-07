@@ -76,3 +76,9 @@ installer/lhm-temp/lhm-temp.exe
 /conky.1.gz
 .codex/
 __pycache__/
+
+# PyInstaller output for tools/conky_editor/ (see conky_editor.spec) --
+# rebuild locally with `python -m PyInstaller tools/conky_editor/conky_editor.spec`,
+# don't commit the ~45MB standalone exe.
+tools/conky_editor/dist/
+tools/conky_editor/pyi_build/

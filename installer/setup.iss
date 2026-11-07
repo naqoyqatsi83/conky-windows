@@ -1,13 +1,17 @@
 ; Inno Setup script for Conky Windows Port
 
 #define MyAppName "Conky"
-#define MyAppVersion "1.24.3-wp.4"
+#define MyAppVersion "1.24.3-wp.5"
 #define MyAppPublisher "Conky project"
 #define MyAppURL "https://github.com/brndnhrbrt/conky"
 #define MyAppExeName "conky.exe"
 
 #ifndef SOURCE_DIR
   #define SOURCE_DIR "..\build\src"
+#endif
+
+#ifndef EDITOR_SOURCE_DIR
+  #define EDITOR_SOURCE_DIR "..\tools\conky_editor\dist"
 #endif
 
 [Setup]
@@ -41,6 +45,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
 Name: "startup"; Description: "Start Conky &automatically at login"; GroupDescription: "Startup options:"; Flags: checkedonce
 Name: "install_lhm"; Description: "Install LibreHardwareMonitor (enables CPU/GPU temperature, fan speeds, voltages - runs as tray app)"; GroupDescription: "Hardware monitoring:"; Flags: unchecked
+Name: "install_editor"; Description: "Install Conky Editor (live-preview GUI for authoring/tuning conkyrc themes - see conky-windows issue #31)"; GroupDescription: "Tools:"; Flags: unchecked
 
 [Dirs]
 Name: "{commonappdata}\Conky"
@@ -54,27 +59,35 @@ Source: "{#SOURCE_DIR}\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsour
 ; Lua module "cairo.dll" can't collide with the real cairo.dll library
 ; above despite sharing a filename.
 Source: "{#SOURCE_DIR}\lua_modules\*.dll"; DestDir: "{app}\lua_modules"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs
-Source: "btop.conkyrc"; DestDir: "{app}"; Flags: ignoreversion
+Source: "conkyrc"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SOURCE_DIR}\..\..\installer\LibreHardwareMonitor\*"; DestDir: "{app}\LibreHardwareMonitor"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs; Tasks: install_lhm
 Source: "conky.ico"; DestDir: "{app}"; Flags: ignoreversion
+; ConkyEditor.exe is a PyInstaller build (tools/conky_editor/conky_editor.spec),
+; not produced by the CMake build -- skipifsourcedoesntexist so a normal
+; conky.exe-only build doesn't fail; see tools/README.md for how to build it.
+; Installed next to conky.exe so preview.py's frozen-build default (look
+; for conky.exe beside its own .exe) resolves with no extra configuration.
+Source: "{#EDITOR_SOURCE_DIR}\ConkyEditor.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: install_editor
 
 [Icons]
-Name: "{group}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; IconFilename: "{app}\conky.ico"
-Name: "{group}\Conky (edit config)"; Filename: "notepad.exe"; Parameters: """{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"
+Name: "{group}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"; IconFilename: "{app}\conky.ico"
+Name: "{group}\Conky (edit config)"; Filename: "notepad.exe"; Parameters: """{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"
 Name: "{group}\LibreHardwareMonitor"; Filename: "{app}\LibreHardwareMonitor\LibreHardwareMonitor.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm
 Name: "{group}\Conky Temp Helper"; Filename: "{app}\LibreHardwareMonitor\lhm-temp.exe"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm; Comment: "Manual launch - normally runs automatically via scheduled task"
+Name: "{group}\Conky Editor"; Filename: "{app}\ConkyEditor.exe"; WorkingDir: "{app}"; Tasks: install_editor; IconFilename: "{app}\conky.ico"
 Name: "{group}\Uninstall Conky"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\conky.ico"
-Name: "{userstartup}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"""; WorkingDir: "{app}"; Tasks: startup; IconFilename: "{app}\conky.ico"
+Name: "{autodesktop}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\conky.ico"
+Name: "{userstartup}\Conky"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"""; WorkingDir: "{app}"; Tasks: startup; IconFilename: "{app}\conky.ico"
 Name: "{userstartup}\LibreHardwareMonitor"; Filename: "{app}\LibreHardwareMonitor\LibreHardwareMonitor.exe"; Parameters: "--minimize"; WorkingDir: "{app}\LibreHardwareMonitor"; Tasks: install_lhm
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\btop.conkyrc"" -d"; Description: "Launch Conky"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "-c ""{userdocs}\Conky\conkyrc"" -d"; Description: "Launch Conky"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
 Filename: "taskkill"; Parameters: "/F /IM conky.exe"; Flags: runhidden skipifdoesntexist
 Filename: "taskkill"; Parameters: "/F /IM lhm-temp.exe"; Flags: runhidden skipifdoesntexist
 Filename: "taskkill"; Parameters: "/F /IM LibreHardwareMonitor.exe"; Flags: runhidden skipifdoesntexist
+Filename: "taskkill"; Parameters: "/F /IM ConkyEditor.exe"; Flags: runhidden skipifdoesntexist
 Filename: "schtasks.exe"; Parameters: "/DELETE /TN ""ConkyTempHelper"" /F"; Flags: runhidden skipifdoesntexist
 
 [UninstallDelete]
@@ -83,6 +96,7 @@ Type: files; Name: "{commonappdata}\Conky\gpu.dat"
 Type: dirifempty; Name: "{commonappdata}\Conky"
 Type: filesandordirs; Name: "{app}\LibreHardwareMonitor"
 Type: files; Name: "{app}\conky.exe"
+Type: files; Name: "{app}\ConkyEditor.exe"
 Type: files; Name: "{app}\*.dll"
 Type: filesandordirs; Name: "{app}\lua_modules"
 Type: files; Name: "{app}\conky.ico"
@@ -99,6 +113,7 @@ begin
   Exec('taskkill', '/F /IM conky.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill', '/F /IM lhm-temp.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill', '/F /IM LibreHardwareMonitor.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec('taskkill', '/F /IM ConkyEditor.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 function InitializeSetup: Boolean;
@@ -272,12 +287,29 @@ var
   Lines: TArrayOfString;
   I: Integer;
 begin
-  ConfigPath := ExpandConstant('{userdocs}\Conky\btop.conkyrc');
+  ConfigPath := ExpandConstant('{userdocs}\Conky\conkyrc');
   ConfigDir := ExpandConstant('{userdocs}\Conky');
 
   // Ensure the config directory exists
   if not DirExists(ConfigDir) then
     CreateDir(ConfigDir);
+
+  // Never clobber an existing config on reinstall/upgrade -- it may well
+  // be hand-tuned (e.g. via the Conky Editor, issue #31). Ask first on an
+  // interactive install; a silent install has no one to click a dialog
+  // (the same lesson run_elevated.ps1 hit trying to avoid a UAC prompt),
+  // so it always keeps the existing file rather than risk overwriting
+  // someone's real config unattended.
+  if FileExists(ConfigPath) then
+  begin
+    if WizardSilent() then
+      exit;
+    if MsgBox('A config file already exists at:' + #13#10 + ConfigPath + #13#10 +
+        'Overwrite it with the default sample config? Choose "No" to keep ' +
+        'your existing config unchanged.',
+        mbConfirmation, MB_YESNO) = IDNO then
+      exit;
+  end;
 
   // Detect GPU - wait a bit only if lhm-temp was actually installed
   if FileExists(ExpandConstant('{app}\LibreHardwareMonitor\lhm-temp.exe')) then
@@ -286,7 +318,7 @@ begin
   GpuIdxStr := IntToStr(GpuIdx);
 
   // Build config content inline (avoids LoadStringsFromFile entirely)
-  // This is a copy of btop.conkyrc with GPU_IDX as the placeholder.
+  // This is a copy of conkyrc with GPU_IDX as the placeholder.
   try
     SetArrayLength(Lines, 67);
     Lines[0]  := 'conky.config = {';
@@ -295,7 +327,7 @@ begin
     Lines[3]  := '  gap_x = 20, gap_y = 60,';
     Lines[4]  := '  font = ''Consolas:size=10'',';
     Lines[5]  := '  default_color = ''white'',';
-    Lines[6]  := '  update_interval = 1.0,';
+    Lines[6]  := '  update_interval = 2.0,';
     Lines[7]  := '  minimum_width = 340, minimum_height = 0,';
     Lines[8]  := '  maximum_width = 350,';
     Lines[9]  := '  draw_shades = false,';
@@ -305,14 +337,14 @@ begin
     Lines[13] := '${font Segoe UI:bold:size=12}${alignc}System Monitor';
     Lines[14] := '${hr 2}';
     Lines[15] := '';
-    Lines[16] := '${font Segoe UI:bold:size=10}${exec powershell -Command "$env:COMPUTERNAME"}';
+    Lines[16] := '${font Segoe UI:bold:size=10}${nodename}';
     Lines[17] := '${font Consolas:size=10}';
     Lines[18] := 'Uptime:             ${alignr}$uptime';
     Lines[19] := '';
-    Lines[20] := '${font Segoe UI:bold:size=10}CPU [${exec powershell -Command "((Get-CimInstance Win32_Processor).Name).Trim()"}]';
+    Lines[20] := '${font Segoe UI:bold:size=10}CPU [${execi 86400 powershell -Command "((Get-CimInstance Win32_Processor).Name).Trim()"}]';
     Lines[21] := '${font Consolas:size=10}';
     Lines[22] := 'Usage:              ${alignr}${cpu}%';
-    Lines[23] := 'Freq:               ${alignr}${exec powershell -Command "& { [math]::Round(((Get-CimInstance Win32_Processor).MaxClockSpeed[0] * (Get-CimInstance Win32_PerfFormattedData_Counters_ProcessorInformation)[0].PercentProcessorPerformance) / 100 / 1000, 2) }"} GHz';
+    Lines[23] := 'Freq:               ${alignr}${freq_g} GHz';
     Lines[24] := 'Temp:               ${alignr}${acpitemp}C';
     Lines[25] := '${cpugraph 50,340 FFA500 FF4500}';
     Lines[26] := '';
@@ -366,7 +398,7 @@ begin
     SaveStringsToFile(ConfigPath, Lines, False);
   except
     // If inline generation fails for any reason, skip config creation.
-    // The user can manually copy the template from {app}\btop.conkyrc.
+    // The user can manually copy the template from {app}\conkyrc.
   end;
 end;
 

@@ -14,6 +14,222 @@ section in [AGENTS.md](AGENTS.md) for how work flows from issue to
 Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
+## [1.24.3-wp.5] - 2026-11-07
+
+### Changed
+- Default `update_interval` is now `2.0` (installer-written config,
+  `installer/conkyrc`, `conky_examples/Windows-btop.conkyrc`, README
+  sample). The old `1.0` default never really refreshed every second:
+  its three blocking `${exec powershell ...}` calls stretched each cycle
+  to ~2 s. With those gone (#44), `1.0` became a true 1 s refresh --
+  twice the pace users were used to. `2.0` keeps the familiar pace;
+  set it back to `1.0` for faster updates. README also gained a tip on
+  `${exec}` vs `${execi}` on Windows.
+  [#45](https://github.com/naqoyqatsi83/conky-windows/issues/45)
+
+### Fixed
+- The default config the installer writes (`setup.iss`), the shipped
+  `installer/conkyrc` and `conky_examples/Windows-btop.conkyrc` spawned
+  ~3 `cmd.exe` + `powershell.exe` processes per second via plain
+  `${exec}` for the host name, CPU name and CPU frequency. Now
+  `${nodename}`, `${freq_g}`, and `${execi 86400 ...}` for the CPU name
+  (no built-in for it yet). Verified: the new sample started 1 child
+  process in 15 s, down from ~45.
+  [#44](https://github.com/naqoyqatsi83/conky-windows/issues/44)
+- Logoff/shutdown was flooded with un-dismissable "cmd.exe - Application
+  Error (0xc0000142)" popups for any config using `${exec}`: conky kept
+  spawning `cmd.exe` children while Windows was tearing the session
+  down, and every one failed DLL init with a hard-error dialog (confirmed
+  via process-creation auditing -- `conky.exe` was the creator of each
+  failing `cmd.exe`). The display backend's `wnd_proc` now handles
+  `WM_QUERYENDSESSION`/`WM_ENDSESSION` and `pid_popen()` stops spawning
+  while the session is ending, resuming if the shutdown is cancelled.
+  Also fixed a UB `*buf.rbegin()` on empty exec output. Verified by
+  sending the messages to a live instance: 4 children/5 s normally, 0
+  after `WM_QUERYENDSESSION`, 5 after a cancelling `WM_ENDSESSION`.
+  [#43](https://github.com/naqoyqatsi83/conky-windows/issues/43)
+- `tools/conky_editor/`'s inline autocomplete (#39 v2) wasn't closing the
+  brace on accept -- `${cp` + Tab produced `${cpu`, not `${cpu}`. Fixed:
+  accepting now inserts the closing `}` too (cursor left right before
+  it, same as the v1 object browser), unless one is already sitting
+  right there (completing inside an already-closed `${cp|}`), in which
+  case it just steps over instead of doubling up. Verified both cases
+  via `QTest` keystroke simulation, plus a full regression pass (no
+  respawn on edit, lint still works).
+- A spdlog write/rotation failure (e.g. from rapid config reloads,
+  #34, hitting the log file while another handle briefly has it open)
+  crashed the whole process instead of being handled by this project's
+  own non-fatal error handler (`src/logging.cc`). Root cause:
+  `3rdparty/spdlog/CMakeLists.txt` had `SPDLOG_NO_EXCEPTIONS` forced ON
+  with no reason to (nothing else here builds with `-fno-exceptions`),
+  which makes spdlog `printf`+`abort()` directly instead of throwing --
+  completely bypassing the custom handler regardless of what it does.
+  Reproduced reliably (a rapid-reload stress test killed the process
+  within ~50-60 cycles every time) and confirmed fixed (220+ rapid
+  saves across multiple runs, zero crashes, stable GDI/USER handle
+  counts) after flipping the
+  flag. [#42](https://github.com/naqoyqatsi83/conky-windows/issues/42)
+- `${cpugraph}` intermittently drew a stray line spanning almost the
+  full window height for one frame right after `conky.exe` started.
+  `info.cpu_usage` was allocated with `malloc` (uninitialized); the
+  first-ever CPU% sample has no prior baseline to diff against, so it's
+  correctly skipped, but that left `${cpu}`/`${cpugraph}` reading raw
+  heap garbage for that one frame. Fixed by allocating with `calloc`
+  instead, plus a defensive clamp on the graph bar's drawn extent
+  (matching the existing `grad_idx` clamp in the same function, from
+  the issue #1 SIGSEGV investigation) so any future bad value degrades
+  to a malformed-but-contained bar rather than a stray full-height
+  line. Reproduced reliably (21 anomalies / 20 fresh launches) and
+  confirmed fixed (0 / 20) via temporary diagnostic
+  logging. [#33](https://github.com/naqoyqatsi83/conky-windows/issues/33)
+- The installer's `CreateConfig()` unconditionally regenerated
+  `{userdocs}\Conky\btop.conkyrc` from the install-time template on
+  *every* reinstall, silently overwriting any customization (including
+  anything tuned via the live-preview editor, #31). Now checks
+  `FileExists` first and asks via a dialog on an interactive install
+  (silent installs always keep the existing file -- no one to click a
+  dialog). Also renamed the sample config `btop.conkyrc` -> `conkyrc`
+  (generic default name, no pre-release installed base worth migrating
+  for). [#41](https://github.com/naqoyqatsi83/conky-windows/issues/41)
+
+### Added
+- Live config-reload on Windows: editing and saving a running instance's
+  config file now updates it in place, no restart needed -- parity with
+  Linux's inotify-based auto-reload, which was entirely absent on this
+  port (`HAVE_SYS_INOTIFY_H` is Linux-only). Since Windows has no
+  inotify equivalent wired up here, `main_loop()` polls the config
+  file's mtime once per update cycle instead (bounded latency, no
+  extra thread) and calls the existing cross-platform `reload_config()`
+  -- respects `disable_auto_reload` same as Linux. Verified live: edited
+  a running instance's config, confirmed it picked up the change with
+  the same PID (no process restart) via a debug log grep and a
+  before/after screenshot; separately confirmed `disable_auto_reload =
+  true` suppresses
+  it. [#34](https://github.com/naqoyqatsi83/conky-windows/issues/34)
+- `tools/conky_editor/`'s preview now uses #34's live-reload instead of
+  killing and relaunching `conky.exe` on every edit:
+  `PreviewProcess.sync()` only spawns a process for the first launch (or
+  if the preview isn't running for any reason); an already-running
+  preview just gets its temp file rewritten and reloads itself. Avoids a
+  full OS process respawn (and the GPU-sensor scheduled-task retrigger
+  that comes with every `conky.exe` launch) on every debounce tick.
+  Verified: 5 rapid text edits kept the same PID throughout (no
+  respawn), and an alignment-grid change correctly repositioned the
+  window via live-reload with no respawn
+  either. [#35](https://github.com/naqoyqatsi83/conky-windows/issues/35)
+- `tools/conky_editor/`: the text pane / side panel split is now a
+  draggable `QSplitter` instead of a fixed 3:1
+  layout. [#37](https://github.com/naqoyqatsi83/conky-windows/issues/37)
+- `tools/conky_editor/`: the Lint panel now wraps long findings instead of
+  running off the visible width, and a new **View** menu (the editor's
+  first menu bar) has a "Wrap Long Lines" toggle for the main text
+  pane. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
+- `tools/conky_editor/`: the main text pane now has line numbers
+  (`line_number_edit.py`, the standard Qt "Code Editor" gutter pattern)
+  -- one number per logical line, drawn once at its first visual row, so
+  a long line wrapped into several rows via "Wrap Long Lines" still shows
+  a single correct number instead of miscounting. Verified visually with
+  wrap on: a 4-visual-row wrapped line shows its number
+  once. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
+- `tools/conky_editor/`: a "Show Line Numbers" View menu toggle (on by
+  default), and the View menu's toggle states (wrap, line numbers) now
+  persist across runs via `QSettings` in INI format --
+  `%APPDATA%\ConkyWindows\ConkyEditor.ini`, a plain text file rather than
+  the registry, easy to find/inspect/delete. Verified: defaults are
+  correct on a fresh settings file (wrap off, line numbers on), toggling
+  both and relaunching a fresh window instance loads the persisted
+  values correctly, and hiding line numbers collapses the gutter to zero
+  width as expected -- with no regression to preview/live-reload/lint
+  wired up alongside
+  it. [#38](https://github.com/naqoyqatsi83/conky-windows/issues/38)
+- `tools/conky_editor/`: an "Insert Object..." button opens a non-modal,
+  searchable browser (`object_helper.py`) of every real conky object
+  name (458 objects), sourced from the same live-parsed
+  `backport_conkyrc.KNOWN_OBJECTS` the lint panel already uses.
+  Double-click/Enter inserts `${name}` at the cursor, positioned right
+  before the closing `}` so typing arguments continues in one motion.
+  Names only -- no argument-signature data exists anywhere in this
+  codebase in structured form, so full autocomplete-as-you-type is
+  explicitly left as a v2 for later. Verified: 458 objects listed,
+  filtering narrows correctly (e.g. "cpu" -> 6 matches), insertion lands
+  at the right position with the cursor ready for a following argument
+  (confirmed by typing one right after), the dialog stays open/reusable
+  for inserting several objects in a row, and no regression to preview/
+  live-reload/lint. [#39](https://github.com/naqoyqatsi83/conky-windows/issues/39)
+- `tools/conky_editor/`: inline autocomplete (v2, `LineNumberTextEdit` +
+  `QCompleter`) -- typing right after `${` pops up matching object
+  names, narrowing as you keep typing; Tab/Enter accepts the highlighted
+  suggestion, Up/Down navigates, Escape dismisses without inserting.
+  Same `KNOWN_OBJECTS` source as the v1 object browser. Verified via
+  `QTest.keyClicks`/`keyClick` simulating real typing: popup appears
+  with the right filtered count, Tab-accept inserts correctly and hides
+  the popup, Escape leaves the text untouched, Down-arrow changes the
+  highlighted suggestion, and the popup never appears for unrelated
+  typing (after a closing `}`, or elsewhere in the
+  document). [#39](https://github.com/naqoyqatsi83/conky-windows/issues/39)
+- `tools/conky_editor/`: a live-preview GUI config editor (PySide6) --
+  text pane + a real, live-updating `conky.exe` preview, plus a 3x3
+  anchor grid and `gap_x`/`gap_y` fields mirroring conky's own
+  positioning model. Milestones 1-2 (debounced preview, positioning
+  grid) verified: no orphaned `conky.exe` processes across repeated
+  edits/restarts, and all 9 grid positions confirmed via
+  `GetWindowRect` to land the window at the expected screen
+  corner/edge. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+- `xinerama_head` config key on Windows: selects which monitor the window
+  is placed on (0-indexed, matching `${monitor}`'s own enumeration order),
+  reusing upstream's X11 head-selection key name. Defaults to -1 (primary
+  monitor, unchanged from prior behavior); out-of-range values fall back
+  to primary with a logged warning. Verified on this machine's real
+  2-monitor setup: `xinerama_head = 1` lands the window on the secondary
+  monitor, `0`/unset/out-of-range all correctly resolve to
+  primary. [#32](https://github.com/naqoyqatsi83/conky-windows/issues/32)
+- `tools/conky_editor/`: a monitor picker (`monitors.py` + a combo box)
+  wired to `xinerama_head`, driving the same preview loop as the alignment
+  grid. Verified end-to-end on this machine's real 2-monitor setup:
+  selecting the secondary monitor moves the live preview window there
+  (`GetWindowRect` confirmed), and switching back to "Default" removes the
+  `xinerama_head` key rather than leaving a redundant explicit
+  `-1`. [#32](https://github.com/naqoyqatsi83/conky-windows/issues/32)
+- `tools/conky_editor/`: milestone 3 -- minimal syntax highlighting
+  (`highlighter.py`, `${...}` object references only, reusing
+  `backport_conkyrc.py`'s brace-depth-aware `scan_objects()`) and a live
+  "Lint" side panel running `backport_conkyrc.lint()` on the same debounce
+  cycle as the preview, surfacing every REVIEW/UNSUPPORTED/UNKNOWN/CONFIG/
+  EXEC finding as you type. Verified against the repo's own example theme
+  (57 OK / 11 findings, matching the CLI tool's own output) and that
+  introducing a bogus object gets flagged UNKNOWN within one debounce
+  cycle, with no regression to the preview-restart
+  path. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+- `tools/conky_editor/conky_editor.spec`: PyInstaller packaging for the
+  editor (`python -m PyInstaller tools/conky_editor/conky_editor.spec`) --
+  a standalone `ConkyEditor.exe`, no Python install required to run it.
+  `preview.py`'s default `conky.exe` lookup is now frozen-build-aware
+  (looks next to the packaged `.exe` instead of the dev-tree `build/src/`
+  path), and `main.py` gained a `--conky-exe PATH` override plus a status-bar
+  message instead of a crash when `conky.exe` isn't found. Verified: the
+  packaged exe launches standalone (highlighting, lint panel, and position
+  controls all render correctly) and its frozen `sys.executable` resolution
+  was confirmed correct via a throwaway probe
+  build. [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+- `installer/setup.iss`: an opt-in "Install Conky Editor" task (unchecked
+  by default, like the LibreHardwareMonitor task) that bundles
+  `ConkyEditor.exe` next to `conky.exe` and adds a Start Menu shortcut.
+  Built from `tools/conky_editor/dist/ConkyEditor.exe`
+  (`skipifsourcedoesntexist`, so a normal conky-only build doesn't need it
+  present). Verified the installer compiles and actually includes the exe
+  (~61MB vs ~9MB without
+  it). [#31](https://github.com/naqoyqatsi83/conky-windows/issues/31)
+
+### Fixed
+- Stale `mingw32-make.exe ... conky.exe` / `conky.dir` target names in
+  `AGENTS.md`/`README.md`'s build instructions -- the actual CMake targets
+  are `conky` and `conky_core.dir`. Also documented that `cmake`/
+  `mingw32-make` must run from a shell with `sh` on PATH (Git Bash, not
+  plain PowerShell): `colour-names.hh` is generated via a configure-time
+  `sh`+`gperf` pipeline that fails silently without it, breaking the build
+  with a confusing, seemingly-unrelated `content/colours.cc: 'rgb' does
+  not name a type` error.
+
 ## [1.24.3-wp.4] - 2026-09-16
 
 ### Added
