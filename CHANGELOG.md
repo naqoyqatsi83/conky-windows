@@ -14,6 +14,8 @@ section in [AGENTS.md](AGENTS.md) for how work flows from issue to
 Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
+## [1.24.3-wp.5] - 2026-11-07
+
 ### Changed
 - Default `update_interval` is now `2.0` (installer-written config,
   `installer/conkyrc`, `conky_examples/Windows-btop.conkyrc`, README
