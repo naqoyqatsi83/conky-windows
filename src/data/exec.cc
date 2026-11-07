@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <atomic>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -84,6 +85,18 @@ static char *remove_excess_quotes(const char *command) {
   *cmd_ptr = '\0';
   return cmd;
 }
+
+#ifdef _WIN32
+static std::atomic<bool> session_ending{false};
+
+void exec_set_session_ending(bool ending) {
+  if (session_ending.exchange(ending) != ending) {
+    LOG_INFO("session {}: exec commands {}",
+             ending ? "ending" : "end cancelled",
+             ending ? "suspended" : "resumed");
+  }
+}
+#endif
 
 // our own implementation of popen, the difference : the value of 'childpid'
 // will be filled with the pid of the running 'command'. This is useful if want
@@ -153,6 +166,11 @@ static FILE *pid_popen(const char *command, const char *mode, pid_t *child) {
   // Windows: use CreateProcess with anonymous pipes (no console flash).
   // This replaces the POSIX fork/exec/pipe pattern with the native Windows
   // equivalent, running the command through cmd.exe /c with CREATE_NO_WINDOW.
+
+  // Don't start new processes while the session is ending -- they can't
+  // initialize and each one pops a 0xc0000142 error dialog (see exec.h).
+  if (session_ending.load()) { return nullptr; }
+
   SECURITY_ATTRIBUTES sa = {};
   sa.nLength = sizeof(SECURITY_ATTRIBUTES);
   sa.bInheritHandle = TRUE;
@@ -247,7 +265,9 @@ void exec_cb::work() {
     buf.append(b, length);
   }
 
-  if (*buf.rbegin() == '\n') { buf.resize(buf.size() - 1); }
+  // Empty output is normal (silent command, or a child that failed to
+  // start) -- don't dereference rbegin() of an empty string.
+  if (!buf.empty() && buf.back() == '\n') { buf.pop_back(); }
 
   std::lock_guard<std::mutex> l(result_mutex);
   result = buf;

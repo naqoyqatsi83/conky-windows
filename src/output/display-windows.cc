@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "../conky.h"
+#include "../data/exec.h"
 #include "../logging.h"
 #include "../lua/fonts.h"
 #include "cairo_dynamic.hh"
@@ -402,6 +403,15 @@ LRESULT CALLBACK display_output_windows::wnd_proc(HWND hwnd, UINT msg,
     }
     case WM_ERASEBKGND:
       return 1;
+    case WM_QUERYENDSESSION:
+      // Logoff/shutdown is starting: stop spawning ${exec} children now,
+      // before Windows begins tearing the session down (see exec.h).
+      exec_set_session_ending(true);
+      return TRUE;
+    case WM_ENDSESSION:
+      // wp == FALSE: some app vetoed and the shutdown was cancelled.
+      exec_set_session_ending(wp != FALSE);
+      return 0;
     case WM_DESTROY:
       PostQuitMessage(0);
       return 0;

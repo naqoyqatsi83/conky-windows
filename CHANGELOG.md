@@ -15,6 +15,18 @@ Changes land here as they're merged to `develop`, then move under a
 version heading when that state gets tagged and merged to `main`.
 
 ### Fixed
+- Logoff/shutdown was flooded with un-dismissable "cmd.exe - Application
+  Error (0xc0000142)" popups for any config using `${exec}`: conky kept
+  spawning `cmd.exe` children while Windows was tearing the session
+  down, and every one failed DLL init with a hard-error dialog (confirmed
+  via process-creation auditing -- `conky.exe` was the creator of each
+  failing `cmd.exe`). The display backend's `wnd_proc` now handles
+  `WM_QUERYENDSESSION`/`WM_ENDSESSION` and `pid_popen()` stops spawning
+  while the session is ending, resuming if the shutdown is cancelled.
+  Also fixed a UB `*buf.rbegin()` on empty exec output. Verified by
+  sending the messages to a live instance: 4 children/5 s normally, 0
+  after `WM_QUERYENDSESSION`, 5 after a cancelling `WM_ENDSESSION`.
+  [#43](https://github.com/naqoyqatsi83/conky-windows/issues/43)
 - `tools/conky_editor/`'s inline autocomplete (#39 v2) wasn't closing the
   brace on accept -- `${cp` + Tab produced `${cpu`, not `${cpu}`. Fixed:
   accepting now inserts the closing `}` too (cursor left right before
